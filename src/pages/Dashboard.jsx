@@ -15,33 +15,35 @@ const Dashboard = () => {
     recaudoHoy: 0
   });
   const [loading, setLoading] = useState(true);
+  const [loadingStep, setLoadingStep] = useState("Iniciando...");
+  const [errorDetails, setErrorDetails] = useState("");
 
   useEffect(() => {
     const fetchMetricas = async () => {
       try {
-        // 1. Préstamos Activos
-        const qPrestamos = query(collection(db, 'prestamos'), where('estado', '==', 'activo'));
-        const snapPrestamos = await getDocs(qPrestamos);
+        setLoadingStep("Obteniendo préstamos (1/4)...");
+        const snapPrestamos = await getDocs(collection(db, 'prestamos'));
         let prestamosCount = 0;
         let saldoTotal = 0;
         let capitalTotal = 0;
         snapPrestamos.forEach(doc => {
-          prestamosCount++;
           const data = doc.data();
-          saldoTotal += Number(data.saldoPendiente || 0);
-          
-          // Estimar capital e interés restante basado en el peso original
-          // Si totalInicial es 110 y capital es 100, el capital es el 90.9% de la deuda.
-          const totalInic = Number(data.totalInicial || data.montoPrincipal || 1);
-          const capInic = Number(data.montoPrincipal || 0);
-          const proporcionCapital = capInic / totalInic;
-          
-          capitalTotal += Number(data.saldoPendiente || 0) * proporcionCapital;
+          if (data.estado === 'activo') {
+            prestamosCount++;
+            saldoTotal += Number(data.saldoPendiente || 0);
+            
+            // Estimar capital e interés restante
+            const totalInic = Number(data.totalInicial || data.montoPrincipal || 1);
+            const capInic = Number(data.montoPrincipal || 0);
+            const proporcionCapital = capInic / totalInic;
+            
+            capitalTotal += Number(data.saldoPendiente || 0) * proporcionCapital;
+          }
         });
 
         const interesTotal = saldoTotal - capitalTotal;
 
-        // 2. Inventario
+        setLoadingStep("Obteniendo inventario (2/4)...");
         const snapProductos = await getDocs(collection(db, 'productos'));
         let productosCount = 0;
         let valorInv = 0;
@@ -51,14 +53,14 @@ const Dashboard = () => {
           valorInv += Number(data.stock || 0) * Number(data.costo || data.precio || 0);
         });
 
-        // 3. Ventas (Todas para simplificar por ahora, idealmente filtrar por mes actual)
+        setLoadingStep("Obteniendo ventas (3/4)...");
         const snapVentas = await getDocs(collection(db, 'ventas'));
         let ventasTotal = 0;
         snapVentas.forEach(doc => {
           ventasTotal += Number(doc.data().total || 0);
         });
 
-        // 4. Recaudo de Hoy (Pagos con fecha de hoy)
+        setLoadingStep("Obteniendo recaudo hoy (4/4)...");
         const snapPagos = await getDocs(collection(db, 'pagos'));
         let recaudoHoyTotal = 0;
         const hoy = new Date();
@@ -67,8 +69,16 @@ const Dashboard = () => {
         snapPagos.forEach(doc => {
           const data = doc.data();
           if (data.fechaPago) {
-            const fechaPago = data.fechaPago.toDate();
-            if (fechaPago >= hoy) {
+            let fechaPago = null;
+            if (typeof data.fechaPago.toDate === 'function') {
+              fechaPago = data.fechaPago.toDate();
+            } else if (data.fechaPago.seconds) {
+              fechaPago = new Date(data.fechaPago.seconds * 1000);
+            } else {
+              fechaPago = new Date(data.fechaPago);
+            }
+            
+            if (fechaPago && fechaPago >= hoy) {
               recaudoHoyTotal += Number(data.montoAbonado || 0);
             }
           }
@@ -86,6 +96,7 @@ const Dashboard = () => {
         });
       } catch (error) {
         console.error("Error obteniendo métricas: ", error);
+        setErrorDetails(error.message || String(error));
       } finally {
         setLoading(false);
       }
@@ -95,7 +106,22 @@ const Dashboard = () => {
   }, []);
 
   if (loading) {
-    return <div className="p-8 flex items-center justify-center text-slate-500">Cargando métricas...</div>;
+    return (
+      <div className="p-8 flex flex-col items-center justify-center text-slate-400 gap-4">
+        <div className="text-xl font-semibold">Cargando métricas...</div>
+        <div className="text-indigo-400">{loadingStep}</div>
+        {errorDetails && <div className="text-red-500 text-sm">{errorDetails}</div>}
+      </div>
+    );
+  }
+
+  if (errorDetails) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center text-red-400 gap-4">
+        <div className="text-xl font-semibold">Error al cargar métricas</div>
+        <div className="text-sm">{errorDetails}</div>
+      </div>
+    );
   }
 
   return (

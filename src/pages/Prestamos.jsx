@@ -317,6 +317,41 @@ const Prestamos = () => {
         </div>
       )}
 
+      {/* Resumen de Valores Totales */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="glass-panel p-4 rounded-xl border border-indigo-500/30 flex justify-between items-center bg-indigo-900/10">
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase">Deuda Total Emitida</p>
+            <p className="text-2xl font-bold text-slate-200 mt-1">
+              ${prestamos.reduce((sum, p) => sum + (Number(p.totalInicial) || Number(p.montoPrincipal) || 0), 0).toLocaleString()}
+            </p>
+          </div>
+          <div className="text-2xl">💰</div>
+        </div>
+        <div className="glass-panel p-4 rounded-xl border border-emerald-500/30 flex justify-between items-center bg-emerald-900/10">
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase">Total Pagado / Recaudado</p>
+            <p className="text-2xl font-bold text-emerald-400 mt-1">
+              ${prestamos.reduce((sum, p) => {
+                const total = Number(p.totalInicial) || Number(p.montoPrincipal) || 0;
+                const pendiente = Number(p.saldoPendiente) || 0;
+                return sum + (total - pendiente);
+              }, 0).toLocaleString()}
+            </p>
+          </div>
+          <div className="text-2xl">✅</div>
+        </div>
+        <div className="glass-panel p-4 rounded-xl border border-orange-500/30 flex justify-between items-center bg-orange-900/10">
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase">Saldo Pendiente (Faltante)</p>
+            <p className="text-2xl font-bold text-orange-400 mt-1">
+              ${prestamos.reduce((sum, p) => sum + Number(p.saldoPendiente || 0), 0).toLocaleString()}
+            </p>
+          </div>
+          <div className="text-2xl">⏳</div>
+        </div>
+      </div>
+
       <div className="glass-panel rounded-xl  border border-none overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
