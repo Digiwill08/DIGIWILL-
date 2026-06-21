@@ -45,11 +45,7 @@ const Ventas = () => {
       let pData = snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(p => p.stock > 0);
 
       const userEmail = currentUser?.email?.toLowerCase();
-      if (userEmail === 'wilmerjosevegaacevedo@gmail.com') {
-        vData = vData.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
-        cData = cData.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
-        pData = pData.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
-      } else {
+      if (userEmail !== 'wilmerjosevegaacevedo@gmail.com') {
         vData = vData.filter(d => d.vendedor === userEmail);
         cData = cData.filter(d => d.vendedor === userEmail);
         pData = pData.filter(d => d.vendedor === userEmail);

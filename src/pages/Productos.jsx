@@ -24,9 +24,7 @@ const Productos = () => {
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       const userEmail = currentUser?.email?.toLowerCase();
-      if (userEmail === 'wilmerjosevegaacevedo@gmail.com') {
-        data = data.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
-      } else {
+      if (userEmail !== 'wilmerjosevegaacevedo@gmail.com') {
         data = data.filter(d => d.vendedor === userEmail);
       }
       
@@ -121,12 +119,13 @@ const Productos = () => {
               <th className="p-4 text-sm font-semibold text-slate-400">Costo Compra</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Precio Venta</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Stock</th>
+              <th className="p-4 text-sm font-semibold text-slate-400">Vendedor</th>
             </tr>
           </thead>
           <tbody>
             {productos.length === 0 ? (
               <tr>
-                <td colSpan="4" className="p-8 text-center text-slate-500">No hay productos registrados</td>
+                <td colSpan="5" className="p-8 text-center text-slate-500">No hay productos registrados</td>
               </tr>
             ) : (
               productos.map(p => (
@@ -137,6 +136,7 @@ const Productos = () => {
                   <td className="p-4 text-slate-400">
                     <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-semibold">{p.stock}</span>
                   </td>
+                  <td className="p-4 text-slate-400 text-sm">{p.vendedor}</td>
                 </tr>
               ))
             )}

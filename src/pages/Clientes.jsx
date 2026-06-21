@@ -24,9 +24,7 @@ const Clientes = () => {
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       const userEmail = currentUser?.email?.toLowerCase();
-      if (userEmail === 'wilmerjosevegaacevedo@gmail.com') {
-        data = data.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
-      } else {
+      if (userEmail !== 'wilmerjosevegaacevedo@gmail.com') {
         data = data.filter(d => d.vendedor === userEmail);
       }
 
