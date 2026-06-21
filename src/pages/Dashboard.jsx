@@ -1,7 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Wallet, Package, TrendingUp } from 'lucide-react';
+
+// Helper to prevent hanging getDocs
+const getDocsFast = (queryRef) => {
+  return new Promise((resolve, reject) => {
+    const unsubscribe = onSnapshot(
+      queryRef,
+      (snapshot) => {
+        resolve(snapshot);
+        unsubscribe();
+      },
+      (error) => {
+        reject(error);
+      }
+    );
+  });
+};
 
 const Dashboard = () => {
   const [metricas, setMetricas] = useState({
@@ -22,7 +38,7 @@ const Dashboard = () => {
     const fetchMetricas = async () => {
       try {
         setLoadingStep("Obteniendo préstamos (1/4)...");
-        const snapPrestamos = await getDocs(collection(db, 'prestamos'));
+        const snapPrestamos = await getDocsFast(collection(db, 'prestamos'));
         let prestamosCount = 0;
         let saldoTotal = 0;
         let capitalTotal = 0;
@@ -44,7 +60,7 @@ const Dashboard = () => {
         const interesTotal = saldoTotal - capitalTotal;
 
         setLoadingStep("Obteniendo inventario (2/4)...");
-        const snapProductos = await getDocs(collection(db, 'productos'));
+        const snapProductos = await getDocsFast(collection(db, 'productos'));
         let productosCount = 0;
         let valorInv = 0;
         snapProductos.forEach(doc => {
@@ -54,14 +70,14 @@ const Dashboard = () => {
         });
 
         setLoadingStep("Obteniendo ventas (3/4)...");
-        const snapVentas = await getDocs(collection(db, 'ventas'));
+        const snapVentas = await getDocsFast(collection(db, 'ventas'));
         let ventasTotal = 0;
         snapVentas.forEach(doc => {
           ventasTotal += Number(doc.data().total || 0);
         });
 
         setLoadingStep("Obteniendo recaudo hoy (4/4)...");
-        const snapPagos = await getDocs(collection(db, 'pagos'));
+        const snapPagos = await getDocsFast(collection(db, 'pagos'));
         let recaudoHoyTotal = 0;
         const hoy = new Date();
         hoy.setHours(0,0,0,0);
