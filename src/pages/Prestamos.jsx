@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const Prestamos = () => {
   const [showForm, setShowForm] = useState(false);
@@ -191,6 +193,45 @@ const Prestamos = () => {
     }
   };
 
+  const generarPDF = () => {
+    const p = historialModal.prestamo;
+    const doc = new jsPDF();
+    
+    // Cabecera
+    doc.setFontSize(22);
+    doc.setTextColor(79, 70, 229);
+    doc.text('DIGIWILL - Estado de Cuenta', 105, 20, null, null, 'center');
+    
+    // Info Cliente
+    doc.setFontSize(12);
+    doc.setTextColor(60, 60, 60);
+    doc.text(`Cliente: ${p.nombreCompleto}`, 14, 35);
+    doc.text(`Cedula: ${p.cedula || 'N/A'}`, 14, 42);
+    doc.text(`Telefono: ${p.telefono || 'N/A'}`, 14, 49);
+    
+    // Info Prestamo
+    doc.text(`Total Emitido: $${p.totalInicial}`, 120, 35);
+    doc.text(`Saldo Pendiente: $${p.saldoPendiente}`, 120, 42);
+    doc.text(`Estado: ${p.estado.toUpperCase()}`, 120, 49);
+
+    // Historial
+    const tableData = historialModal.pagos.map(pago => [
+      pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Hoy',
+      `$${pago.montoAbonado}`
+    ]);
+
+    doc.autoTable({
+      startY: 60,
+      head: [['Fecha y Hora de Abono', 'Monto Pagado']],
+      body: tableData.length > 0 ? tableData : [['No hay abonos registrados', '-']],
+      theme: 'grid',
+      headStyles: { fillColor: [79, 70, 229] },
+      styles: { fontSize: 10 }
+    });
+
+    doc.save(`Estado_Cuenta_${p.nombreCompleto.replace(/\s+/g, '_')}.pdf`);
+  };
+
   return (
     <div className="p-8 relative">
       <div className="flex justify-between items-center mb-6">
@@ -310,7 +351,10 @@ const Prestamos = () => {
               )}
             </div>
             
-            <div className="mt-4 pt-4 border-t border-transparent text-right">
+            <div className="mt-4 pt-4 border-t border-transparent flex justify-between">
+              <button type="button" onClick={generarPDF} className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                📄 Descargar PDF
+              </button>
               <button type="button" onClick={() => setHistorialModal({show:false, prestamo:null, pagos:[]})} className="px-4 py-2 text-slate-400 hover:bg-transparent rounded-lg font-medium">Cerrar</button>
             </div>
           </div>

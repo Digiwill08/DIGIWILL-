@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, WalletCards, Package, Users, ShoppingCart, LogOut, Settings } from 'lucide-react';
+import { LayoutDashboard, WalletCards, Package, Users, ShoppingCart, LogOut, Settings, DollarSign } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Sidebar = () => {
@@ -55,6 +55,16 @@ const Sidebar = () => {
           >
             <Package size={20} />
             <span>Inventario</span>
+          </NavLink>
+        )}
+
+        {!isVendedor && (
+          <NavLink 
+            to="/caja" 
+            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
+          >
+            <DollarSign size={20} />
+            <span>Caja Diaria</span>
           </NavLink>
         )}
 

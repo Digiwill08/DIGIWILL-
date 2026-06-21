@@ -8,6 +8,7 @@ import Productos from './pages/Productos';
 import Clientes from './pages/Clientes';
 import Ventas from './pages/Ventas';
 import VentasLizz from './pages/VentasLizz';
+import Caja from './pages/Caja';
 import Login from './pages/Login';
 import Register from './pages/Register';
 
@@ -39,7 +40,8 @@ const ProtectedLayout = () => {
           <Route path="/prestamos" element={isVendedor ? <Navigate to="/ventas" /> : <Prestamos />} />
           <Route path="/productos" element={<Productos />} />
           <Route path="/ventas" element={<Ventas />} />
-          {!isVendedor && <Route path="/ventas-lizz" element={<VentasLizz />} />}
+          <Route path="/ventas-lizz" element={isVendedor ? <Navigate to="/ventas" replace /> : <VentasLizz />} />
+          <Route path="/caja" element={isVendedor ? <Navigate to="/ventas" replace /> : <Caja />} />
           <Route path="*" element={<Navigate to={isVendedor ? "/ventas" : "/"} />} />
         </Routes>
       </main>
