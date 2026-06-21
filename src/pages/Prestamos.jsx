@@ -20,7 +20,8 @@ const Prestamos = () => {
     clienteId: '',
     montoPrincipal: '',
     tasaInteres: '',
-    frecuenciaCobro: 'mensual'
+    frecuenciaCobro: 'mensual',
+    numeroCuotas: ''
   });
 
   const fetchData = async () => {
@@ -60,7 +61,26 @@ const Prestamos = () => {
     try {
       const montoP = Number(formData.montoPrincipal);
       const tasaI = Number(formData.tasaInteres);
+      const numeroCuotasNum = Number(formData.numeroCuotas);
       const totalConInteres = montoP + (montoP * (tasaI / 100));
+
+      const cuotasList = [];
+      const montoCuota = totalConInteres / numeroCuotasNum;
+      let currentFecha = new Date();
+      for (let i = 1; i <= numeroCuotasNum; i++) {
+        if (formData.frecuenciaCobro === 'diario') currentFecha.setDate(currentFecha.getDate() + 1);
+        else if (formData.frecuenciaCobro === 'semanal') currentFecha.setDate(currentFecha.getDate() + 7);
+        else if (formData.frecuenciaCobro === 'quincenal') currentFecha.setDate(currentFecha.getDate() + 15);
+        else if (formData.frecuenciaCobro === 'mensual') currentFecha.setMonth(currentFecha.getMonth() + 1);
+        
+        cuotasList.push({
+          numero: i,
+          monto: montoCuota,
+          saldo: montoCuota,
+          fechaVencimiento: new Date(currentFecha.getTime()),
+          estado: 'pendiente'
+        });
+      }
 
       await addDoc(collection(db, 'prestamos'), {
         clienteId: formData.clienteId,
@@ -70,13 +90,15 @@ const Prestamos = () => {
         montoPrincipal: montoP,
         tasaInteres: tasaI,
         frecuenciaCobro: formData.frecuenciaCobro,
+        numeroCuotas: numeroCuotasNum,
+        cuotas: cuotasList,
         fechaInicio: serverTimestamp(),
         estado: 'activo',
         saldoPendiente: totalConInteres,
         totalInicial: totalConInteres
       });
       
-      setFormData({ clienteId: '', montoPrincipal: '', tasaInteres: '', frecuenciaCobro: 'mensual' });
+      setFormData({ clienteId: '', montoPrincipal: '', tasaInteres: '', frecuenciaCobro: 'mensual', numeroCuotas: '' });
       setShowForm(false);
       fetchData();
       alert('Préstamo registrado con éxito!');
@@ -108,6 +130,25 @@ const Prestamos = () => {
         fechaPago: serverTimestamp()
       });
 
+      // Actualizar cuotas si existen
+      let montoRestante = monto;
+      let nuevasCuotas = p.cuotas ? [...p.cuotas] : [];
+      
+      if (nuevasCuotas.length > 0) {
+        for (let i = 0; i < nuevasCuotas.length; i++) {
+          if (nuevasCuotas[i].estado === 'pendiente' && montoRestante > 0) {
+            if (montoRestante >= nuevasCuotas[i].saldo) {
+              montoRestante -= nuevasCuotas[i].saldo;
+              nuevasCuotas[i].saldo = 0;
+              nuevasCuotas[i].estado = 'pagado';
+            } else {
+              nuevasCuotas[i].saldo -= montoRestante;
+              montoRestante = 0;
+            }
+          }
+        }
+      }
+
       // Actualizar préstamo
       const nuevoSaldo = p.saldoPendiente - monto;
       const estadoNuevo = nuevoSaldo <= 0 ? 'pagado' : 'activo';
@@ -115,7 +156,8 @@ const Prestamos = () => {
       const prestamoRef = doc(db, 'prestamos', p.id);
       await updateDoc(prestamoRef, {
         saldoPendiente: nuevoSaldo,
-        estado: estadoNuevo
+        estado: estadoNuevo,
+        cuotas: nuevasCuotas
       });
 
       setAbonoModal({ show: false, prestamo: null, monto: '' });
@@ -184,14 +226,20 @@ const Prestamos = () => {
                 <label className="block text-sm font-medium text-slate-300 mb-1">Tasa de Interés (%)</label>
                 <input required type="number" name="tasaInteres" value={formData.tasaInteres} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" />
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia de Cobro</label>
-                <select name="frecuenciaCobro" value={formData.frecuenciaCobro} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none glass-panel">
-                  <option value="diario">Diario</option>
-                  <option value="semanal">Semanal</option>
-                  <option value="quincenal">Quincenal</option>
-                  <option value="mensual">Mensual</option>
-                </select>
+              <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia de Cobro</label>
+                  <select name="frecuenciaCobro" value={formData.frecuenciaCobro} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none glass-panel">
+                    <option value="diario">Diario</option>
+                    <option value="semanal">Semanal</option>
+                    <option value="quincenal">Quincenal</option>
+                    <option value="mensual">Mensual</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Número de Cuotas</label>
+                  <input required type="number" min="1" name="numeroCuotas" value={formData.numeroCuotas} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
               </div>
             </div>
             <div className="pt-4">
@@ -245,7 +293,17 @@ const Prestamos = () => {
                           {pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Reciente'}
                         </p>
                       </div>
-                      <span className="font-bold text-emerald-500">+${pago.montoAbonado}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-emerald-500">+${pago.montoAbonado}</span>
+                        <a 
+                          href={`https://wa.me/?text=${encodeURIComponent(`🧾 DIGIWILL - Recibo de Abono\nCliente: ${historialModal.prestamo?.nombreCompleto}\nFecha: ${pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Hoy'}\nMonto Abonado: $${pago.montoAbonado}\nSaldo Restante: $${historialModal.prestamo?.saldoPendiente}`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg transition-colors text-xs font-semibold"
+                        >
+                          WhatsApp
+                        </a>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -276,15 +334,30 @@ const Prestamos = () => {
                 <td colSpan="5" className="p-8 text-center text-slate-500">No hay préstamos registrados</td>
               </tr>
             ) : (
-              prestamos.map(p => (
+              prestamos.map(p => {
+                let enMora = false;
+                if (p.estado === 'activo' && p.cuotas) {
+                   const cuotasPendientes = p.cuotas.filter(c => c.estado === 'pendiente');
+                   if (cuotasPendientes.length > 0) {
+                     const firstPending = cuotasPendientes[0];
+                     // Comparar asumiendo Timestamp
+                     if (firstPending.fechaVencimiento && (firstPending.fechaVencimiento.toDate ? firstPending.fechaVencimiento.toDate() : new Date(firstPending.fechaVencimiento)) < new Date()) {
+                       enMora = true;
+                     }
+                   }
+                }
+                const estadoVisual = enMora ? 'MORA' : p.estado;
+                const estadoColor = enMora ? 'bg-red-500/20 text-red-500 border border-red-500/50' : (p.estado === 'activo' ? 'bg-emerald-100 text-emerald-700' : 'bg-transparent text-slate-300');
+
+                return (
                 <tr key={p.id} className="border-b border-none hover:bg-transparent">
                   <td className="p-4 font-medium text-slate-100">{p.nombreCompleto} <br/><span className="text-xs text-slate-500">{p.cedula}</span></td>
                   <td className="p-4 text-slate-400">${p.montoPrincipal} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
-                  <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro}</td>
+                  <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro} {p.numeroCuotas && `(${p.numeroCuotas} cuotas)`}</td>
                   <td className="p-4 text-indigo-600 font-bold">${p.saldoPendiente}</td>
                   <td className="p-4 flex flex-wrap gap-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold text-center w-fit ${p.estado === 'activo' ? 'bg-emerald-100 text-emerald-700' : 'bg-transparent text-slate-300'}`}>
-                      {p.estado}
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold text-center w-fit uppercase ${estadoColor}`}>
+                      {estadoVisual}
                     </span>
                     {p.estado === 'activo' && (
                       <button onClick={() => setAbonoModal({show:true, prestamo: p, monto: ''})} className="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg font-semibold transition-colors w-fit">
@@ -296,7 +369,7 @@ const Prestamos = () => {
                     </button>
                   </td>
                 </tr>
-              ))
+              )})
             )}
           </tbody>
         </table>

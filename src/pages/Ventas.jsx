@@ -24,6 +24,7 @@ const Ventas = () => {
   const [tipoVenta, setTipoVenta] = useState('contado');
   const [tasaInteres, setTasaInteres] = useState('');
   const [frecuenciaCobro, setFrecuenciaCobro] = useState('mensual');
+  const [numeroCuotas, setNumeroCuotas] = useState('');
 
   const fetchData = async () => {
     try {
@@ -113,7 +114,27 @@ const Ventas = () => {
       if (tipoVenta === 'financiada') {
         const montoP = totalCarrito;
         const tasaI = Number(tasaInteres);
+        const numeroCuotasNum = Number(numeroCuotas);
         const totalConInteres = montoP + (montoP * (tasaI / 100));
+
+        // Generar Cuotas
+        const cuotasList = [];
+        const montoCuota = totalConInteres / numeroCuotasNum;
+        let currentFecha = new Date();
+        for (let i = 1; i <= numeroCuotasNum; i++) {
+          if (frecuenciaCobro === 'diario') currentFecha.setDate(currentFecha.getDate() + 1);
+          else if (frecuenciaCobro === 'semanal') currentFecha.setDate(currentFecha.getDate() + 7);
+          else if (frecuenciaCobro === 'quincenal') currentFecha.setDate(currentFecha.getDate() + 15);
+          else if (frecuenciaCobro === 'mensual') currentFecha.setMonth(currentFecha.getMonth() + 1);
+          
+          cuotasList.push({
+            numero: i,
+            monto: montoCuota,
+            saldo: montoCuota,
+            fechaVencimiento: new Date(currentFecha.getTime()),
+            estado: 'pendiente'
+          });
+        }
 
         await addDoc(collection(db, 'prestamos'), {
           clienteId,
@@ -122,6 +143,8 @@ const Ventas = () => {
           telefono: cliente.telefono,
           montoPrincipal: montoP,
           tasaInteres: tasaI,
+          numeroCuotas: numeroCuotasNum,
+          cuotas: cuotasList,
           frecuenciaCobro,
           fechaInicio: serverTimestamp(),
           estado: 'activo',
@@ -146,6 +169,7 @@ const Ventas = () => {
       setTipoVenta('contado');
       setTasaInteres('');
       setFrecuenciaCobro('mensual');
+      setNumeroCuotas('');
       setShowForm(false);
       fetchData();
       alert('Venta procesada con éxito');
@@ -190,7 +214,7 @@ const Ventas = () => {
               </select>
               
               {tipoVenta === 'financiada' && (
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-3 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Interés (%)</label>
                     <input required type="number" min="0" value={tasaInteres} onChange={(e) => setTasaInteres(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none" />
@@ -203,6 +227,10 @@ const Ventas = () => {
                       <option value="quincenal">Quincenal</option>
                       <option value="mensual">Mensual</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">N° Cuotas</label>
+                    <input required type="number" min="1" value={numeroCuotas} onChange={(e) => setNumeroCuotas(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none" />
                   </div>
                 </div>
               )}
