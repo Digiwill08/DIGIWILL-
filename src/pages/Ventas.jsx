@@ -63,6 +63,15 @@ const Ventas = () => {
     fetchData();
   }, []);
 
+  // Calcular métricas rápidas para el vendedor
+  const totalHistorico = ventas.reduce((sum, v) => sum + Number(v.total || 0), 0);
+  const totalHoy = ventas.filter(v => {
+    if (!v.fechaVenta) return true; // Si apenas se creó localmente
+    const d = v.fechaVenta.toDate();
+    const hoy = new Date();
+    return d.getDate() === hoy.getDate() && d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear();
+  }).reduce((sum, v) => sum + Number(v.total || 0), 0);
+
   const agregarAlCarrito = () => {
     if (!selectedProduct) return;
     const prod = productos.find(p => p.id === selectedProduct);
@@ -205,6 +214,29 @@ const Ventas = () => {
         >
           {showForm ? 'Cancelar' : 'Nueva Venta'}
         </button>
+      </div>
+
+      {/* Tarjetas de Métricas Rápidas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="glass-panel p-6 rounded-xl flex items-center gap-4 border border-indigo-500/20 shadow-[0_0_15px_rgba(79,70,229,0.1)]">
+          <div className="p-4 bg-indigo-500/20 rounded-lg text-indigo-400">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          </div>
+          <div>
+            <p className="text-sm text-slate-400 font-medium">Tus Ventas de Hoy</p>
+            <p className="text-3xl font-bold text-emerald-400">${totalHoy.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className="glass-panel p-6 rounded-xl flex items-center gap-4 border border-indigo-500/10">
+          <div className="p-4 bg-slate-800 rounded-lg text-slate-300">
+            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          </div>
+          <div>
+            <p className="text-sm text-slate-400 font-medium">Recaudo Histórico (Tu cuenta)</p>
+            <p className="text-2xl font-bold text-slate-200">${totalHistorico.toLocaleString()}</p>
+          </div>
+        </div>
       </div>
 
       {showForm && (
