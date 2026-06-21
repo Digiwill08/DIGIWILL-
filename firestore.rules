@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email.lower() == 'wilmerjosevegaacevedo@gmail.com';
+    }
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // ==========================================
+    // DATOS OPERATIVOS (Acceso para todo el personal)
+    // ==========================================
+    // Todos los empleados que inicien sesión pueden interactuar con 
+    // las ventas, el inventario y la base de clientes.
+    // (La separación visual de Lizz y Estefania se maneja en la app)
+    match /clientes/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /productos/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /ventas/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // ==========================================
+    // DATOS FINANCIEROS Y CONFIDENCIALES (Solo Jefe)
+    // ==========================================
+    // Absolutamente nadie, ni usando hacks, puede leer o modificar
+    // el dinero, los préstamos, o la caja chica si no es el administrador.
+    match /prestamos/{document=**} {
+      allow read, write: if isAdmin();
+    }
+    match /pagos/{document=**} {
+      allow read, write: if isAdmin();
+    }
+    match /caja/{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

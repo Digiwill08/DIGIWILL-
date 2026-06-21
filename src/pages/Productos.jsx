@@ -23,8 +23,11 @@ const Productos = () => {
       const snapshot = await getDocs(q);
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      if (['vendedor1@digiwill.com', 'estefania@digiwill.com'].includes(currentUser?.email?.toLowerCase())) {
-        data = data.filter(d => d.vendedor === currentUser.email);
+      const userEmail = currentUser?.email?.toLowerCase();
+      if (userEmail === 'wilmerjosevegaacevedo@gmail.com') {
+        data = data.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
+      } else {
+        data = data.filter(d => d.vendedor === userEmail);
       }
       
       setProductos(data);

@@ -44,11 +44,15 @@ const Ventas = () => {
       const snapProductos = await getDocs(qProductos);
       let pData = snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(p => p.stock > 0);
 
-      // Si es un vendedor (Lizz o Estefania), filtrar para que solo vea lo suyo
-      if (['vendedor1@digiwill.com', 'estefania@digiwill.com'].includes(currentUser?.email?.toLowerCase())) {
-        vData = vData.filter(d => d.vendedor === currentUser.email);
-        cData = cData.filter(d => d.vendedor === currentUser.email);
-        pData = pData.filter(d => d.vendedor === currentUser.email);
+      const userEmail = currentUser?.email?.toLowerCase();
+      if (userEmail === 'wilmerjosevegaacevedo@gmail.com') {
+        vData = vData.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
+        cData = cData.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
+        pData = pData.filter(d => !d.vendedor || d.vendedor === 'admin' || d.vendedor === userEmail);
+      } else {
+        vData = vData.filter(d => d.vendedor === userEmail);
+        cData = cData.filter(d => d.vendedor === userEmail);
+        pData = pData.filter(d => d.vendedor === userEmail);
       }
 
       setVentas(vData);
