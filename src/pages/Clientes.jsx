@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 
 const Clientes = () => {
+  const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [clientes, setClientes] = useState([]);
@@ -19,7 +21,12 @@ const Clientes = () => {
     try {
       const q = query(collection(db, 'clientes'), orderBy('fechaRegistro', 'desc'));
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      if (currentUser?.email?.toLowerCase() === 'vendedor1@digiwill.com') {
+        data = data.filter(d => d.vendedor === currentUser.email);
+      }
+
       setClientes(data);
     } catch (error) {
       console.error("Error cargando clientes: ", error);
@@ -46,6 +53,7 @@ const Clientes = () => {
         email: formData.email,
         direccion: formData.direccion,
         fechaRegistro: serverTimestamp(),
+        vendedor: currentUser?.email || 'admin'
       });
       
       setFormData({ nombreCompleto: '', cedula: '', telefono: '', email: '', direccion: '' });

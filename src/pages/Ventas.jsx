@@ -3,7 +3,10 @@ import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, or
 import { db } from '../firebase';
 import { Trash2, Plus } from 'lucide-react';
 
+import { useAuth } from '../context/AuthContext';
+
 const Ventas = () => {
+  const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   
@@ -31,17 +34,26 @@ const Ventas = () => {
       // Cargar Ventas
       const qVentas = query(collection(db, 'ventas'), orderBy('fechaVenta', 'desc'));
       const snapVentas = await getDocs(qVentas);
-      setVentas(snapVentas.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-      // Cargar Clientes
+      let vData = snapVentas.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
       const qClientes = query(collection(db, 'clientes'), orderBy('nombreCompleto', 'asc'));
       const snapClientes = await getDocs(qClientes);
-      setClientes(snapClientes.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      let cData = snapClientes.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      // Cargar Productos (Solo con stock)
       const qProductos = query(collection(db, 'productos'), orderBy('nombre', 'asc'));
       const snapProductos = await getDocs(qProductos);
-      setProductos(snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(p => p.stock > 0));
+      let pData = snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(p => p.stock > 0);
+
+      // Si es Lizz, filtrar para que solo vea lo suyo
+      if (currentUser?.email?.toLowerCase() === 'vendedor1@digiwill.com') {
+        vData = vData.filter(d => d.vendedor === currentUser.email);
+        cData = cData.filter(d => d.vendedor === currentUser.email);
+        pData = pData.filter(d => d.vendedor === currentUser.email);
+      }
+
+      setVentas(vData);
+      setClientes(cData);
+      setProductos(pData);
     } catch (error) {
       console.error("Error cargando datos: ", error);
     }
@@ -107,7 +119,8 @@ const Ventas = () => {
         fechaVenta: serverTimestamp(),
         total: totalCarrito,
         detalles: carrito,
-        tipoVenta
+        tipoVenta,
+        vendedor: currentUser?.email || 'admin'
       });
 
       // 1.5 Si es financiada, crear préstamo
@@ -150,7 +163,8 @@ const Ventas = () => {
           estado: 'activo',
           saldoPendiente: totalConInteres,
           totalInicial: totalConInteres,
-          ventaId: ventaRef.id // Referencia cruzada
+          ventaId: ventaRef.id,
+          vendedor: currentUser?.email || 'admin'
         });
       }
 

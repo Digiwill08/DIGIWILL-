@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 
 const Productos = () => {
+  const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [productos, setProductos] = useState([]);
@@ -19,7 +21,12 @@ const Productos = () => {
     try {
       const q = query(collection(db, 'productos'), orderBy('fechaCreacion', 'desc'));
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      if (currentUser?.email?.toLowerCase() === 'vendedor1@digiwill.com') {
+        data = data.filter(d => d.vendedor === currentUser.email);
+      }
+      
       setProductos(data);
     } catch (error) {
       console.error("Error cargando productos: ", error);
@@ -45,6 +52,7 @@ const Productos = () => {
         valorVenta: Number(formData.valorVenta),
         stock: Number(formData.stock),
         fechaCreacion: serverTimestamp(),
+        vendedor: currentUser?.email || 'admin'
       });
       
       setFormData({ nombre: '', valorCompra: '', valorVenta: '', stock: '' });
