@@ -8,6 +8,7 @@ import Productos from './pages/Productos';
 import Clientes from './pages/Clientes';
 import Ventas from './pages/Ventas';
 import VentasLizz from './pages/VentasLizz';
+import VentasEstefania from './pages/VentasEstefania';
 import Caja from './pages/Caja';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -20,7 +21,7 @@ const PrivateRoute = ({ children }) => {
 const ProtectedLayout = () => {
   const { currentUser } = useAuth();
   const emailUser = currentUser?.email?.toLowerCase() || '';
-  const isVendedor = emailUser === 'vendedor1@digiwill.com';
+  const isVendedor = ['vendedor1@digiwill.com', 'estefania@digiwill.com'].includes(emailUser);
   const isAdmin = emailUser === 'wilmerjosevegaacevedo@gmail.com';
 
   return (
@@ -41,6 +42,7 @@ const ProtectedLayout = () => {
           <Route path="/productos" element={<Productos />} />
           <Route path="/ventas" element={<Ventas />} />
           <Route path="/ventas-lizz" element={isVendedor ? <Navigate to="/ventas" replace /> : <VentasLizz />} />
+          <Route path="/ventas-estefania" element={isVendedor ? <Navigate to="/ventas" replace /> : <VentasEstefania />} />
           <Route path="/caja" element={isVendedor ? <Navigate to="/ventas" replace /> : <Caja />} />
           <Route path="*" element={<Navigate to={isVendedor ? "/ventas" : "/"} />} />
         </Routes>

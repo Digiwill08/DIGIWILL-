@@ -44,8 +44,8 @@ const Ventas = () => {
       const snapProductos = await getDocs(qProductos);
       let pData = snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(p => p.stock > 0);
 
-      // Si es Lizz, filtrar para que solo vea lo suyo
-      if (currentUser?.email?.toLowerCase() === 'vendedor1@digiwill.com') {
+      // Si es un vendedor (Lizz o Estefania), filtrar para que solo vea lo suyo
+      if (['vendedor1@digiwill.com', 'estefania@digiwill.com'].includes(currentUser?.email?.toLowerCase())) {
         vData = vData.filter(d => d.vendedor === currentUser.email);
         cData = cData.filter(d => d.vendedor === currentUser.email);
         pData = pData.filter(d => d.vendedor === currentUser.email);

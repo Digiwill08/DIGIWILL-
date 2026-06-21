@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 const Sidebar = () => {
   const { currentUser, logout } = useAuth();
   const emailUser = currentUser?.email?.toLowerCase() || '';
-  const isVendedor = emailUser === 'vendedor1@digiwill.com';
+  const isVendedor = ['vendedor1@digiwill.com', 'estefania@digiwill.com'].includes(emailUser);
   const isAdmin = emailUser === 'wilmerjosevegaacevedo@gmail.com';
 
   return (
@@ -75,6 +75,16 @@ const Sidebar = () => {
           >
             <ShoppingCart size={20} />
             <span>Ventas Lizz</span>
+          </NavLink>
+        )}
+
+        {!isVendedor && (
+          <NavLink 
+            to="/ventas-estefania" 
+            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-pink-600/20 text-pink-300 neon-border font-medium border-pink-500' : 'text-slate-400 hover:bg-slate-800 hover:text-pink-200'}`}
+          >
+            <ShoppingCart size={20} />
+            <span>Ventas Estefania</span>
           </NavLink>
         )}
 

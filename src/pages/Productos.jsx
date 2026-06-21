@@ -23,7 +23,7 @@ const Productos = () => {
       const snapshot = await getDocs(q);
       let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      if (currentUser?.email?.toLowerCase() === 'vendedor1@digiwill.com') {
+      if (['vendedor1@digiwill.com', 'estefania@digiwill.com'].includes(currentUser?.email?.toLowerCase())) {
         data = data.filter(d => d.vendedor === currentUser.email);
       }
       
