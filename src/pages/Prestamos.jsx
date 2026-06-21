@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 
 const Prestamos = () => {
@@ -10,6 +10,10 @@ const Prestamos = () => {
   
   // Modal de Abonos
   const [abonoModal, setAbonoModal] = useState({ show: false, prestamo: null, monto: '' });
+  
+  // Modal Historial
+  const [historialModal, setHistorialModal] = useState({ show: false, prestamo: null, pagos: [] });
+  const [loadingPagos, setLoadingPagos] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -54,17 +58,22 @@ const Prestamos = () => {
     const clienteSeleccionado = clientes.find(c => c.id === formData.clienteId);
     
     try {
+      const montoP = Number(formData.montoPrincipal);
+      const tasaI = Number(formData.tasaInteres);
+      const totalConInteres = montoP + (montoP * (tasaI / 100));
+
       await addDoc(collection(db, 'prestamos'), {
         clienteId: formData.clienteId,
         nombreCompleto: clienteSeleccionado.nombreCompleto,
         cedula: clienteSeleccionado.cedula,
         telefono: clienteSeleccionado.telefono,
-        montoPrincipal: Number(formData.montoPrincipal),
-        tasaInteres: Number(formData.tasaInteres),
+        montoPrincipal: montoP,
+        tasaInteres: tasaI,
         frecuenciaCobro: formData.frecuenciaCobro,
         fechaInicio: serverTimestamp(),
         estado: 'activo',
-        saldoPendiente: Number(formData.montoPrincipal)
+        saldoPendiente: totalConInteres,
+        totalInicial: totalConInteres
       });
       
       setFormData({ clienteId: '', montoPrincipal: '', tasaInteres: '', frecuenciaCobro: 'mensual' });
@@ -116,7 +125,27 @@ const Prestamos = () => {
       console.error("Error registrando abono:", error);
       alert('Error al registrar abono.');
     } finally {
+      setLoadingPagos(false);
       setLoading(false);
+    }
+  };
+
+  const handleVerHistorial = async (prestamo) => {
+    setHistorialModal({ show: true, prestamo, pagos: [] });
+    setLoadingPagos(true);
+    try {
+      const qPagos = query(collection(db, 'pagos'), where('prestamoId', '==', prestamo.id));
+      const snapPagos = await getDocs(qPagos);
+      const pagosPrestamo = snapPagos.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.fechaPago?.toMillis() || 0) - (a.fechaPago?.toMillis() || 0));
+      
+      setHistorialModal({ show: true, prestamo, pagos: pagosPrestamo });
+    } catch (error) {
+      console.error("Error cargando historial", error);
+      alert('Error cargando historial de pagos.');
+    } finally {
+      setLoadingPagos(false);
     }
   };
 
@@ -194,6 +223,42 @@ const Prestamos = () => {
         </div>
       )}
 
+      {/* Modal Historial */}
+      {historialModal.show && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="glass-panel p-6 rounded-xl shadow-lg max-w-md w-full max-h-[80vh] flex flex-col">
+            <h3 className="text-lg font-bold mb-2">Historial de Pagos</h3>
+            <p className="text-sm text-slate-400 mb-4">Cliente: {historialModal.prestamo?.nombreCompleto}</p>
+            
+            <div className="flex-1 overflow-y-auto pr-2">
+              {loadingPagos ? (
+                <p className="text-center text-slate-500 my-4">Cargando...</p>
+              ) : historialModal.pagos.length === 0 ? (
+                <p className="text-center text-slate-500 my-4">No hay abonos registrados.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {historialModal.pagos.map(pago => (
+                    <li key={pago.id} className="glass-panel p-3 rounded-lg border border-none flex justify-between items-center">
+                      <div>
+                        <p className="font-semibold text-slate-200">Abono</p>
+                        <p className="text-xs text-slate-400">
+                          {pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Reciente'}
+                        </p>
+                      </div>
+                      <span className="font-bold text-emerald-500">+${pago.montoAbonado}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-transparent text-right">
+              <button type="button" onClick={() => setHistorialModal({show:false, prestamo:null, pagos:[]})} className="px-4 py-2 text-slate-400 hover:bg-transparent rounded-lg font-medium">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="glass-panel rounded-xl  border border-none overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -217,7 +282,7 @@ const Prestamos = () => {
                   <td className="p-4 text-slate-400">${p.montoPrincipal} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
                   <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro}</td>
                   <td className="p-4 text-indigo-600 font-bold">${p.saldoPendiente}</td>
-                  <td className="p-4 flex flex-col gap-2">
+                  <td className="p-4 flex flex-wrap gap-2">
                     <span className={`px-2 py-1 rounded-full text-xs font-semibold text-center w-fit ${p.estado === 'activo' ? 'bg-emerald-100 text-emerald-700' : 'bg-transparent text-slate-300'}`}>
                       {p.estado}
                     </span>
@@ -226,6 +291,9 @@ const Prestamos = () => {
                         💳 Abonar
                       </button>
                     )}
+                    <button onClick={() => handleVerHistorial(p)} className="text-xs bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-600 px-3 py-1.5 rounded-lg font-semibold transition-colors w-fit">
+                      📋 Ver Pagos
+                    </button>
                   </td>
                 </tr>
               ))

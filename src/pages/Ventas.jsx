@@ -20,6 +20,11 @@ const Ventas = () => {
   const [selectedProduct, setSelectedProduct] = useState('');
   const [cantidad, setCantidad] = useState(1);
 
+  // Estado de Financiación
+  const [tipoVenta, setTipoVenta] = useState('contado');
+  const [tasaInteres, setTasaInteres] = useState('');
+  const [frecuenciaCobro, setFrecuenciaCobro] = useState('mensual');
+
   const fetchData = async () => {
     try {
       // Cargar Ventas
@@ -95,13 +100,36 @@ const Ventas = () => {
     
     try {
       // 1. Guardar la venta
-      await addDoc(collection(db, 'ventas'), {
+      const ventaRef = await addDoc(collection(db, 'ventas'), {
         clienteId,
         clienteNombre: cliente.nombreCompleto,
         fechaVenta: serverTimestamp(),
         total: totalCarrito,
-        detalles: carrito
+        detalles: carrito,
+        tipoVenta
       });
+
+      // 1.5 Si es financiada, crear préstamo
+      if (tipoVenta === 'financiada') {
+        const montoP = totalCarrito;
+        const tasaI = Number(tasaInteres);
+        const totalConInteres = montoP + (montoP * (tasaI / 100));
+
+        await addDoc(collection(db, 'prestamos'), {
+          clienteId,
+          nombreCompleto: cliente.nombreCompleto,
+          cedula: cliente.cedula,
+          telefono: cliente.telefono,
+          montoPrincipal: montoP,
+          tasaInteres: tasaI,
+          frecuenciaCobro,
+          fechaInicio: serverTimestamp(),
+          estado: 'activo',
+          saldoPendiente: totalConInteres,
+          totalInicial: totalConInteres,
+          ventaId: ventaRef.id // Referencia cruzada
+        });
+      }
 
       // 2. Descontar Stock
       for (const item of carrito) {
@@ -115,6 +143,9 @@ const Ventas = () => {
       // 3. Limpiar y recargar
       setClienteId('');
       setCarrito([]);
+      setTipoVenta('contado');
+      setTasaInteres('');
+      setFrecuenciaCobro('mensual');
       setShowForm(false);
       fetchData();
       alert('Venta procesada con éxito');
@@ -151,6 +182,32 @@ const Ventas = () => {
               </select>
             </div>
             
+            <div className="pt-4 border-t">
+              <label className="block text-sm font-medium text-slate-300 mb-1">Tipo de Pago</label>
+              <select value={tipoVenta} onChange={(e) => setTipoVenta(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none glass-panel mb-4">
+                <option value="contado">De Contado</option>
+                <option value="financiada">Financiado (A Crédito)</option>
+              </select>
+              
+              {tipoVenta === 'financiada' && (
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Interés (%)</label>
+                    <input required type="number" min="0" value={tasaInteres} onChange={(e) => setTasaInteres(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia</label>
+                    <select value={frecuenciaCobro} onChange={(e) => setFrecuenciaCobro(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none glass-panel">
+                      <option value="diario">Diario</option>
+                      <option value="semanal">Semanal</option>
+                      <option value="quincenal">Quincenal</option>
+                      <option value="mensual">Mensual</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="pt-4 border-t">
               <label className="block text-sm font-medium text-slate-300 mb-1">Agregar Producto</label>
               <div className="flex gap-2">
@@ -210,6 +267,7 @@ const Ventas = () => {
               <th className="p-4 text-sm font-semibold text-slate-400">Cliente</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Artículos</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Total Venta</th>
+              <th className="p-4 text-sm font-semibold text-slate-400">Tipo</th>
             </tr>
           </thead>
           <tbody>
@@ -226,6 +284,11 @@ const Ventas = () => {
                     {v.detalles.map((d, i) => <div key={i}>{d.cantidad}x {d.nombre}</div>)}
                   </td>
                   <td className="p-4 text-emerald-600 font-bold">${v.total}</td>
+                  <td className="p-4">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${v.tipoVenta === 'financiada' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {v.tipoVenta === 'financiada' ? 'Crédito' : 'Contado'}
+                    </span>
+                  </td>
                 </tr>
               )})
             )}
