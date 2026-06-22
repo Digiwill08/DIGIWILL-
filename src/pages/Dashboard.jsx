@@ -21,7 +21,7 @@ const Dashboard = () => {
       if (!currentUser) return;
       try {
         const emailLower = currentUser.email?.toLowerCase() || '';
-        const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
+        const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
         const isEstefania = emailLower.includes('estefania');
         const isVendor = isLizz || isEstefania;
         
@@ -31,61 +31,103 @@ const Dashboard = () => {
         let valorInv = 0;
         let ventasTotal = 0;
 
-        const snapPrestamos = await getDocs(query(collection(db, 'prestamos'), where('estado', '==', 'activo')));
-        const snapProductos = await getDocs(collection(db, 'productos'));
-        const snapVentas = await getDocs(collection(db, 'ventas'));
+        if (isVendor) {
+          // Vendedoras: Consultar de forma segura usando cláusulas 'where' para cumplir las reglas de Firestore
+          const qP1 = query(collection(db, 'prestamos'), where('estado', '==', 'activo'), where('created_by', '==', currentUser.uid));
+          const qP2 = query(collection(db, 'prestamos'), where('estado', '==', 'activo'), where('userId', '==', currentUser.uid));
+          const qP3 = query(collection(db, 'prestamos'), where('estado', '==', 'activo'), where('vendedor', '==', currentUser.email));
 
-        const filterFn = d => {
-          if (isVendor) {
-            const isOwner = d.created_by === currentUser.uid || d.userId === currentUser.uid;
-            const matchesEmail = isLizz 
-              ? (d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1'))
-              : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
-            return isOwner || matchesEmail;
-          } else {
+          const qPr1 = query(collection(db, 'productos'), where('created_by', '==', currentUser.uid));
+          const qPr2 = query(collection(db, 'productos'), where('userId', '==', currentUser.uid));
+          const qPr3 = query(collection(db, 'productos'), where('vendedor', '==', currentUser.email));
+
+          const qV1 = query(collection(db, 'ventas'), where('created_by', '==', currentUser.uid));
+          const qV2 = query(collection(db, 'ventas'), where('userId', '==', currentUser.uid));
+          const qV3 = query(collection(db, 'ventas'), where('vendedor', '==', currentUser.email));
+
+          const [sP1, sP2, sP3, sPr1, sPr2, sPr3, sV1, sV2, sV3] = await Promise.all([
+            getDocs(qP1), getDocs(qP2), getDocs(qP3),
+            getDocs(qPr1), getDocs(qPr2), getDocs(qPr3),
+            getDocs(qV1), getDocs(qV2), getDocs(qV3)
+          ]);
+
+          const mapP = new Map();
+          sP1.docs.forEach(doc => mapP.set(doc.id, doc.data()));
+          sP2.docs.forEach(doc => mapP.set(doc.id, doc.data()));
+          sP3.docs.forEach(doc => mapP.set(doc.id, doc.data()));
+          
+          const mapPr = new Map();
+          sPr1.docs.forEach(doc => mapPr.set(doc.id, doc.data()));
+          sPr2.docs.forEach(doc => mapPr.set(doc.id, doc.data()));
+          sPr3.docs.forEach(doc => mapPr.set(doc.id, doc.data()));
+
+          const mapV = new Map();
+          sV1.docs.forEach(doc => mapV.set(doc.id, doc.data()));
+          sV2.docs.forEach(doc => mapV.set(doc.id, doc.data()));
+          sV3.docs.forEach(doc => mapV.set(doc.id, doc.data()));
+
+          mapP.forEach(data => {
+            prestamosCount++;
+            saldoTotal += Number(data.saldoPendiente || 0);
+          });
+
+          mapPr.forEach(data => {
+            productosCount++;
+            valorInv += Number(data.stock || 0) * Number(data.valorCompra || data.valorVenta || 0);
+          });
+
+          mapV.forEach(data => {
+            ventasTotal += Number(data.total || 0);
+          });
+        } else {
+          // Administrador: Puede consultar la colección completa sin problemas
+          const [snapPrestamos, snapProductos, snapVentas] = await Promise.all([
+            getDocs(query(collection(db, 'prestamos'), where('estado', '==', 'activo'))),
+            getDocs(collection(db, 'productos')),
+            getDocs(collection(db, 'ventas'))
+          ]);
+
+          const filterFn = d => {
             if (activeTab === 'mio') {
               const belongsToVendor = 
-                d.userEmail?.toLowerCase().includes('lizz') || 
+                d.userEmail?.toLowerCase().includes('liz') || 
                 d.userEmail?.toLowerCase().includes('vendedor1') ||
-                d.vendedor?.toLowerCase().includes('lizz') ||
+                d.vendedor?.toLowerCase().includes('liz') ||
                 d.vendedor?.toLowerCase().includes('vendedor1') ||
                 d.userEmail?.toLowerCase().includes('estefania') || 
                 d.vendedor?.toLowerCase().includes('estefania');
               return d.created_by === currentUser.uid || d.userId === currentUser.uid || !belongsToVendor;
             } else if (activeTab === 'lizz') {
-              return d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1');
+              return d.userEmail?.toLowerCase().includes('liz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('liz') || d.vendedor?.toLowerCase().includes('vendedor1');
             } else if (activeTab === 'estefania') {
               return d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania');
             }
-          }
-          return false;
-        };
+            return false;
+          };
 
-        // 1. Préstamos
-        snapPrestamos.forEach(doc => {
-          const data = doc.data();
-          if (filterFn(data)) {
-            prestamosCount++;
-            saldoTotal += Number(data.saldoPendiente || 0);
-          }
-        });
+          snapPrestamos.forEach(doc => {
+            const data = doc.data();
+            if (filterFn(data)) {
+              prestamosCount++;
+              saldoTotal += Number(data.saldoPendiente || 0);
+            }
+          });
 
-        // 2. Inventario
-        snapProductos.forEach(doc => {
-          const data = doc.data();
-          if (filterFn(data)) {
-            productosCount++;
-            valorInv += Number(data.stock || 0) * Number(data.valorCompra || data.valorVenta || 0);
-          }
-        });
+          snapProductos.forEach(doc => {
+            const data = doc.data();
+            if (filterFn(data)) {
+              productosCount++;
+              valorInv += Number(data.stock || 0) * Number(data.valorCompra || data.valorVenta || 0);
+            }
+          });
 
-        // 3. Ventas
-        snapVentas.forEach(doc => {
-          const data = doc.data();
-          if (filterFn(data)) {
-            ventasTotal += Number(data.total || 0);
-          }
-        });
+          snapVentas.forEach(doc => {
+            const data = doc.data();
+            if (filterFn(data)) {
+              ventasTotal += Number(data.total || 0);
+            }
+          });
+        }
 
         setMetricas({
           prestamosActivos: prestamosCount,
@@ -111,7 +153,7 @@ const Dashboard = () => {
   }
 
   const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
+  const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
   const isVendor = isLizz || isEstefania;
 

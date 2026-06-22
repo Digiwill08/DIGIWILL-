@@ -32,54 +32,80 @@ const Ventas = () => {
     if (!currentUser) return;
     try {
       const emailLower = currentUser.email?.toLowerCase() || '';
-      const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
+      const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
       const isEstefania = emailLower.includes('estefania');
       const isVendor = isLizz || isEstefania;
-
-      const snapVentas = await getDocs(collection(db, 'ventas'));
-      const allVentas = snapVentas.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      const snapClientes = await getDocs(collection(db, 'clientes'));
-      const allClientes = snapClientes.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      const snapProductos = await getDocs(collection(db, 'productos'));
-      const allProductos = snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       let ventasData = [];
       let clientesData = [];
       let productosData = [];
 
       if (isVendor) {
-        // Vendedoras: filtrar por su propio created_by, userId, userEmail o vendedor
-        const filterFn = d => {
-          const isOwner = d.created_by === currentUser.uid || d.userId === currentUser.uid;
-          const matchesEmail = isLizz 
-            ? (d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1'))
-            : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
-          return isOwner || matchesEmail;
-        };
-        ventasData = allVentas.filter(filterFn);
-        clientesData = allClientes.filter(filterFn);
-        productosData = allProductos.filter(filterFn);
+        // Vendedoras: Consultar de forma segura usando cláusulas 'where' para cumplir las reglas de Firestore
+        const qV1 = query(collection(db, 'ventas'), where('created_by', '==', currentUser.uid));
+        const qV2 = query(collection(db, 'ventas'), where('userId', '==', currentUser.uid));
+        const qV3 = query(collection(db, 'ventas'), where('vendedor', '==', currentUser.email));
+
+        const qC1 = query(collection(db, 'clientes'), where('created_by', '==', currentUser.uid));
+        const qC2 = query(collection(db, 'clientes'), where('userId', '==', currentUser.uid));
+        const qC3 = query(collection(db, 'clientes'), where('vendedor', '==', currentUser.email));
+
+        const qP1 = query(collection(db, 'productos'), where('created_by', '==', currentUser.uid));
+        const qP2 = query(collection(db, 'productos'), where('userId', '==', currentUser.uid));
+        const qP3 = query(collection(db, 'productos'), where('vendedor', '==', currentUser.email));
+
+        const [snapV1, snapV2, snapV3, snapC1, snapC2, snapC3, snapP1, snapP2, snapP3] = await Promise.all([
+          getDocs(qV1), getDocs(qV2), getDocs(qV3),
+          getDocs(qC1), getDocs(qC2), getDocs(qC3),
+          getDocs(qP1), getDocs(qP2), getDocs(qP3)
+        ]);
+
+        const mapV = new Map();
+        snapV1.docs.forEach(doc => mapV.set(doc.id, { id: doc.id, ...doc.data() }));
+        snapV2.docs.forEach(doc => mapV.set(doc.id, { id: doc.id, ...doc.data() }));
+        snapV3.docs.forEach(doc => mapV.set(doc.id, { id: doc.id, ...doc.data() }));
+        ventasData = Array.from(mapV.values());
+
+        const mapC = new Map();
+        snapC1.docs.forEach(doc => mapC.set(doc.id, { id: doc.id, ...doc.data() }));
+        snapC2.docs.forEach(doc => mapC.set(doc.id, { id: doc.id, ...doc.data() }));
+        snapC3.docs.forEach(doc => mapC.set(doc.id, { id: doc.id, ...doc.data() }));
+        clientesData = Array.from(mapC.values());
+
+        const mapP = new Map();
+        snapP1.docs.forEach(doc => mapP.set(doc.id, { id: doc.id, ...doc.data() }));
+        snapP2.docs.forEach(doc => mapP.set(doc.id, { id: doc.id, ...doc.data() }));
+        snapP3.docs.forEach(doc => mapP.set(doc.id, { id: doc.id, ...doc.data() }));
+        productosData = Array.from(mapP.values());
       } else {
-        // Administrador: filtrar según la selección de pestaña
+        // Administrador: Puede consultar la colección completa sin problemas
+        const [snapVentas, snapClientes, snapProductos] = await Promise.all([
+          getDocs(collection(db, 'ventas')),
+          getDocs(collection(db, 'clientes')),
+          getDocs(collection(db, 'productos'))
+        ]);
+        const allVentas = snapVentas.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const allClientes = snapClientes.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const allProductos = snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
         const filterFn = d => {
           if (activeTab === 'mio') {
             const belongsToVendor = 
-              d.userEmail?.toLowerCase().includes('lizz') || 
+              d.userEmail?.toLowerCase().includes('liz') || 
               d.userEmail?.toLowerCase().includes('vendedor1') ||
-              d.vendedor?.toLowerCase().includes('lizz') ||
+              d.vendedor?.toLowerCase().includes('liz') ||
               d.vendedor?.toLowerCase().includes('vendedor1') ||
               d.userEmail?.toLowerCase().includes('estefania') || 
               d.vendedor?.toLowerCase().includes('estefania');
             return d.created_by === currentUser.uid || d.userId === currentUser.uid || !belongsToVendor;
           } else if (activeTab === 'lizz') {
-            return d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1');
+            return d.userEmail?.toLowerCase().includes('liz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('liz') || d.vendedor?.toLowerCase().includes('vendedor1');
           } else if (activeTab === 'estefania') {
             return d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania');
           }
           return false;
         };
+
         ventasData = allVentas.filter(filterFn);
         clientesData = allClientes.filter(filterFn);
         productosData = allProductos.filter(filterFn);
@@ -224,7 +250,7 @@ const Ventas = () => {
   };
 
   const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
+  const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
   const isVendor = isLizz || isEstefania;
 

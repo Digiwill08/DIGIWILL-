@@ -23,31 +23,38 @@ const Productos = () => {
     if (!currentUser) return;
     try {
       const emailLower = currentUser.email?.toLowerCase() || '';
-      const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
+      const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
       const isEstefania = emailLower.includes('estefania');
       const isVendor = isLizz || isEstefania;
 
-      const snapshot = await getDocs(collection(db, 'productos'));
-      const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       let data = [];
 
       if (isVendor) {
-        // Vendedoras: solo ven sus propios productos (nuevos o heredados)
-        data = allData.filter(d => {
-          const isOwner = d.created_by === currentUser.uid || d.userId === currentUser.uid;
-          const matchesEmail = isLizz 
-            ? (d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1'))
-            : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
-          return isOwner || matchesEmail;
-        });
+        // Vendedoras: Consultar de forma segura usando cláusulas 'where' para cumplir las reglas de Firestore
+        const q1 = query(collection(db, 'productos'), where('created_by', '==', currentUser.uid));
+        const q2 = query(collection(db, 'productos'), where('userId', '==', currentUser.uid));
+        const q3 = query(collection(db, 'productos'), where('vendedor', '==', currentUser.email));
+        
+        const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+        
+        const map = new Map();
+        snap1.docs.forEach(doc => map.set(doc.id, { id: doc.id, ...doc.data() }));
+        snap2.docs.forEach(doc => map.set(doc.id, { id: doc.id, ...doc.data() }));
+        snap3.docs.forEach(doc => map.set(doc.id, { id: doc.id, ...doc.data() }));
+        
+        data = Array.from(map.values());
       } else {
+        // Administrador: Puede consultar la colección completa sin problemas
+        const snapshot = await getDocs(collection(db, 'productos'));
+        const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
         // Administrador: filtrar según la selección de pestaña
         if (activeTab === 'mio') {
           data = allData.filter(d => {
             const belongsToVendor = 
-              d.userEmail?.toLowerCase().includes('lizz') || 
+              d.userEmail?.toLowerCase().includes('liz') || 
               d.userEmail?.toLowerCase().includes('vendedor1') ||
-              d.vendedor?.toLowerCase().includes('lizz') ||
+              d.vendedor?.toLowerCase().includes('liz') ||
               d.vendedor?.toLowerCase().includes('vendedor1') ||
               d.userEmail?.toLowerCase().includes('estefania') || 
               d.vendedor?.toLowerCase().includes('estefania');
@@ -55,9 +62,9 @@ const Productos = () => {
           });
         } else if (activeTab === 'lizz') {
           data = allData.filter(d => 
-            d.userEmail?.toLowerCase().includes('lizz') || 
+            d.userEmail?.toLowerCase().includes('liz') || 
             d.userEmail?.toLowerCase().includes('vendedor1') ||
-            d.vendedor?.toLowerCase().includes('lizz') ||
+            d.vendedor?.toLowerCase().includes('liz') ||
             d.vendedor?.toLowerCase().includes('vendedor1')
           );
         } else if (activeTab === 'estefania') {
@@ -156,7 +163,7 @@ const Productos = () => {
   };
 
   const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
+  const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
   const isVendor = isLizz || isEstefania;
 

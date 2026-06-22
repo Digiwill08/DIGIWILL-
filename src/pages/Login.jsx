@@ -6,9 +6,8 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, resetPassword } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -20,23 +19,6 @@ const Login = () => {
       navigate('/');
     } catch (err) {
       setError('Fallo al iniciar sesión. Revisa tus credenciales.');
-    }
-    setLoading(false);
-  };
-
-  const handleResetPassword = async () => {
-    if (!email) {
-      setError('Por favor, ingresa tu correo electrónico primero para restaurar la contraseña.');
-      return;
-    }
-    try {
-      setError('');
-      setMsg('');
-      setLoading(true);
-      await resetPassword(email);
-      setMsg('Se ha enviado un enlace a tu correo para restablecer la contraseña.');
-    } catch (err) {
-      setError('Error al intentar enviar el correo de recuperación.');
     }
     setLoading(false);
   };
@@ -54,7 +36,6 @@ const Login = () => {
         <h3 className="text-xl font-semibold mb-6 text-center text-slate-300">Iniciar Sesión Segura</h3>
         
         {error && <div className="bg-rose-900/50 text-rose-300 p-3 rounded-lg mb-4 text-sm text-center border border-rose-500/50 shadow-[0_0_10px_rgba(225,29,72,0.4)]">{error}</div>}
-        {msg && <div className="bg-emerald-900/50 text-emerald-300 p-3 rounded-lg mb-4 text-sm text-center border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.4)]">{msg}</div>}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -76,11 +57,6 @@ const Login = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <div className="text-right mt-1">
-              <button type="button" onClick={handleResetPassword} className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline">
-                ¿Olvidaste tu contraseña?
-              </button>
-            </div>
           </div>
           <button 
             disabled={loading} 
