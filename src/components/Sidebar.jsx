@@ -16,9 +16,9 @@ const Sidebar = () => {
       
       <div className="p-6 border-b border-indigo-900/50 flex items-center gap-3 relative">
         <img 
-          src="/logo.jpg" 
+          src="/logo.png" 
           alt="DIGIWILL Logo" 
-          className="w-9 h-9 rounded-full border border-indigo-500/30 object-cover shadow-[0_0_8px_rgba(139,92,246,0.4)]" 
+          className="w-9 h-9 rounded-full border border-indigo-500/30 object-contain p-0.5 shadow-[0_0_8px_rgba(139,92,246,0.3)]" 
         />
         <h1 className="text-xl font-bold text-indigo-400 tracking-wider">
           DIGIWILL

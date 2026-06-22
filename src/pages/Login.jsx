@@ -29,9 +29,9 @@ const Login = () => {
       <div className="max-w-md w-full glass-panel p-8 rounded-xl relative z-10">
         <div className="flex flex-col items-center mb-6">
           <img 
-            src="/logo.jpg" 
+            src="/logo.png" 
             alt="DIGIWILL Logo" 
-            className="w-24 h-24 rounded-full border-2 border-indigo-500/50 shadow-[0_0_20px_rgba(139,92,246,0.5)] object-cover mb-4" 
+            className="w-24 h-24 rounded-full border border-indigo-500/30 shadow-[0_0_20px_rgba(139,92,246,0.3)] object-contain p-1 mb-4" 
           />
           <h2 className="text-4xl font-bold text-center text-indigo-400 tracking-widest uppercase">DIGIWILL</h2>
         </div>
