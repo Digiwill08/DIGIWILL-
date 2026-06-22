@@ -17,6 +17,8 @@ const Dashboard = () => {
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
+  const [productoEstrella, setProductoEstrella] = useState({ nombre: 'Ninguno', cantidad: 0 });
+  const [topDeudores, setTopDeudores] = useState([]);
 
   useEffect(() => {
     const fetchMetricas = async () => {
@@ -34,6 +36,9 @@ const Dashboard = () => {
         let ventasTotal = 0;
         let egresosTotal = 0;
         let productsData = [];
+
+        const productSalesCount = {};
+        const clientDebts = {};
 
         if (isVendor) {
           // Vendedoras: Consultar de forma segura usando cláusulas 'where' para cumplir las reglas de Firestore
@@ -83,6 +88,7 @@ const Dashboard = () => {
           mapP.forEach(data => {
             prestamosCount++;
             saldoTotal += Number(data.saldoPendiente || 0);
+            clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
           });
 
           mapPr.forEach(data => {
@@ -93,6 +99,11 @@ const Dashboard = () => {
 
           mapV.forEach(data => {
             ventasTotal += Number(data.total || 0);
+            if (data.detalles) {
+              data.detalles.forEach(item => {
+                productSalesCount[item.nombre] = (productSalesCount[item.nombre] || 0) + Number(item.cantidad || 0);
+              });
+            }
           });
 
           mapG.forEach(data => {
@@ -130,6 +141,7 @@ const Dashboard = () => {
             if (filterFn(data)) {
               prestamosCount++;
               saldoTotal += Number(data.saldoPendiente || 0);
+              clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
             }
           });
 
@@ -146,6 +158,11 @@ const Dashboard = () => {
             const data = doc.data();
             if (filterFn(data)) {
               ventasTotal += Number(data.total || 0);
+              if (data.detalles) {
+                data.detalles.forEach(item => {
+                  productSalesCount[item.nombre] = (productSalesCount[item.nombre] || 0) + Number(item.cantidad || 0);
+                });
+              }
             }
           });
 
@@ -156,6 +173,24 @@ const Dashboard = () => {
             }
           });
         }
+
+        // Calcular producto estrella
+        let maxSales = 0;
+        let prodEstrellaNombre = 'Ninguno';
+        for (const name in productSalesCount) {
+          if (productSalesCount[name] > maxSales) {
+            maxSales = productSalesCount[name];
+            prodEstrellaNombre = name;
+          }
+        }
+        setProductoEstrella({ nombre: prodEstrellaNombre, cantidad: maxSales });
+
+        // Calcular top deudores
+        const debtorsList = Object.keys(clientDebts)
+          .map(name => ({ name, debt: clientDebts[name] }))
+          .sort((a, b) => b.debt - a.debt)
+          .slice(0, 3);
+        setTopDeudores(debtorsList);
 
         setMetricas({
           prestamosActivos: prestamosCount,
@@ -262,6 +297,41 @@ const Dashboard = () => {
           </div>
         </div>
 
+      </div>
+
+      {/* Nueva fila de KPIs Avanzados */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        {/* Card: Producto Estrella */}
+        <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
+          <div className="p-3 bg-amber-900/40 text-amber-400 rounded-lg border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+            <span className="text-xl">⭐</span>
+          </div>
+          <div>
+            <h3 className="text-slate-400 text-sm font-medium">Producto Estrella (Más Vendido)</h3>
+            <p className="text-2xl font-bold text-amber-300 mt-1 uppercase tracking-wider">{productoEstrella.nombre}</p>
+            <p className="text-xs text-slate-500 mt-1">Total vendido: <span className="font-bold text-slate-300">{productoEstrella.cantidad}</span> unidades</p>
+          </div>
+        </div>
+
+        {/* Card: Top Deudores */}
+        <div className="glass-panel p-6 rounded-xl">
+          <h3 className="text-slate-400 text-sm font-medium mb-3 flex items-center gap-1.5">
+            <span className="text-rose-400">⚠️</span>
+            Top 3 Clientes con Mayor Deuda
+          </h3>
+          {topDeudores.length === 0 ? (
+            <p className="text-xs text-slate-500">No hay deudas registradas.</p>
+          ) : (
+            <div className="space-y-2">
+              {topDeudores.map((debtor, index) => (
+                <div key={index} className="flex justify-between items-center text-sm border-b border-indigo-950/20 pb-1.5 last:border-0 last:pb-0">
+                  <span className="text-slate-300 font-medium">{index + 1}. {debtor.name}</span>
+                  <span className="font-bold text-rose-400">${debtor.debt.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* SVG Double-Bar Chart comparison panel */}
