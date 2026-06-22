@@ -32,8 +32,15 @@ const Login = () => {
       </div>
 
       <div className="max-w-md w-full glass-panel p-8 rounded-xl relative z-10">
-        <h2 className="text-4xl font-bold text-center text-indigo-400 mb-8 neon-text tracking-widest">DIGIWILL</h2>
-        <h3 className="text-xl font-semibold mb-6 text-center text-slate-300">Iniciar Sesión Segura</h3>
+        <div className="flex flex-col items-center mb-6">
+          <img 
+            src="/logo.jpg" 
+            alt="DIGIWILL Logo" 
+            className="w-24 h-24 rounded-full border-2 border-indigo-500/50 shadow-[0_0_20px_rgba(139,92,246,0.5)] object-cover mb-4" 
+          />
+          <h2 className="text-4xl font-bold text-center text-indigo-400 tracking-widest uppercase">DIGIWILL</h2>
+        </div>
+        <h3 className="text-lg font-semibold mb-6 text-center text-slate-300">Iniciar Sesión Segura</h3>
         
         {error && <div className="bg-rose-900/50 text-rose-300 p-3 rounded-lg mb-4 text-sm text-center border border-rose-500/50 shadow-[0_0_10px_rgba(225,29,72,0.4)]">{error}</div>}
         

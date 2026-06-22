@@ -14,9 +14,13 @@ const Sidebar = () => {
   return (
     <div className="w-full md:w-64 bg-slate-900 border-r border-indigo-900/50 h-auto md:h-full flex flex-col shrink-0 shadow-[4px_0_24px_rgba(79,70,229,0.1)] relative overflow-hidden z-10">
       
-      <div className="p-6 border-b border-indigo-900/50 relative">
-        <h1 className="text-2xl font-bold text-indigo-400 neon-text flex items-center gap-2 tracking-wider">
-          <Settings className="animate-[spin_4s_linear_infinite]" size={24} /> 
+      <div className="p-6 border-b border-indigo-900/50 flex items-center gap-3 relative">
+        <img 
+          src="/logo.jpg" 
+          alt="DIGIWILL Logo" 
+          className="w-9 h-9 rounded-full border border-indigo-500/30 object-cover shadow-[0_0_8px_rgba(139,92,246,0.4)]" 
+        />
+        <h1 className="text-xl font-bold text-indigo-400 tracking-wider">
           DIGIWILL
         </h1>
       </div>
