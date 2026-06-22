@@ -333,8 +333,14 @@ const Prestamos = () => {
   return (
     <div className="p-8 relative">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-3xl font-bold text-slate-100">Préstamos WILL</h2>
+        <div className="flex items-center gap-3.5">
+          <img 
+            src="/prestamos_logo.png" 
+            alt="Préstamos Will Logo" 
+            className="w-12 h-12 rounded-lg border border-indigo-500/20 object-contain shadow-[0_0_12px_rgba(0,212,255,0.15)] bg-slate-950/40 p-0.5" 
+          />
+          <div>
+            <h2 className="text-3xl font-bold text-slate-100">Préstamos WILL</h2>
           {!isVendor && (
             <div className="flex border-b border-indigo-900/50 mt-4 gap-2">
               <button
@@ -357,7 +363,7 @@ const Prestamos = () => {
               </button>
             </div>
           )}
-        </div>
+        </div></div>
         <div className="flex gap-2 self-start sm:self-auto">
           <button 
             onClick={handleExportCSV}
