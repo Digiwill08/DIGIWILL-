@@ -51,6 +51,16 @@ service cloud.firestore {
       allow create: if isAdmin() || isCreatingWithOwnUid();
     }
     
+    match /gastos/{document=**} {
+      allow read, update, delete: if isAdmin() || isOwner(resource);
+      allow create: if isAdmin() || isCreatingWithOwnUid();
+    }
+    
+    match /kardex/{document=**} {
+      allow read, update, delete: if isAdmin() || isOwner(resource);
+      allow create: if isAdmin() || isCreatingWithOwnUid();
+    }
+    
     // ==========================================
     // DATOS FINANCIEROS Y CONFIDENCIALES (Solo Jefe)
     // ==========================================

@@ -1,13 +1,10 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, WalletCards, Package, Users, ShoppingCart, LogOut, Settings, DollarSign } from 'lucide-react';
+import { LayoutDashboard, WalletCards, Package, Users, ShoppingCart, LogOut, Settings, Receipt } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Sidebar = () => {
-  const { currentUser, logout } = useAuth();
-  const emailUser = currentUser?.email?.toLowerCase() || '';
-  const isVendedor = ['vendedor1@digiwill.com', 'estefania@digiwill.com'].includes(emailUser);
-  const isAdmin = emailUser === 'wilmerjosevegaacevedo@gmail.com';
+  const { logout } = useAuth();
 
   return (
     <div className="w-full md:w-64 bg-slate-900 border-r border-indigo-900/50 h-auto md:h-full flex flex-col shrink-0 shadow-[4px_0_24px_rgba(79,70,229,0.1)] relative overflow-hidden z-10">
@@ -20,15 +17,13 @@ const Sidebar = () => {
       </div>
       
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto relative z-10">
-        {!isVendedor && (
-          <NavLink 
-            to="/" 
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive && window.location.pathname === '/' ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
-          >
-            <LayoutDashboard size={20} />
-            <span>Dashboard</span>
-          </NavLink>
-        )}
+        <NavLink 
+          to="/" 
+          className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive && window.location.pathname === '/' ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
+        >
+          <LayoutDashboard size={20} />
+          <span>Dashboard</span>
+        </NavLink>
 
         <NavLink 
           to="/clientes" 
@@ -38,15 +33,13 @@ const Sidebar = () => {
           <span>Clientes</span>
         </NavLink>
         
-        {!isVendedor && (
-          <NavLink 
-            to="/prestamos" 
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
-          >
-            <WalletCards size={20} />
-            <span>Préstamos WILL</span>
-          </NavLink>
-        )}
+        <NavLink 
+          to="/prestamos" 
+          className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
+        >
+          <WalletCards size={20} />
+          <span>Préstamos WILL</span>
+        </NavLink>
         
         <NavLink 
           to="/productos" 
@@ -56,42 +49,20 @@ const Sidebar = () => {
           <span>Inventario</span>
         </NavLink>
 
-        {!isVendedor && (
-          <NavLink 
-            to="/caja" 
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
-          >
-            <DollarSign size={20} />
-            <span>Caja Diaria</span>
-          </NavLink>
-        )}
-
-        {!isVendedor && (
-          <NavLink 
-            to="/ventas-lizz" 
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-fuchsia-600/20 text-fuchsia-300 neon-border font-medium border-fuchsia-500' : 'text-slate-400 hover:bg-slate-800 hover:text-fuchsia-200'}`}
-          >
-            <ShoppingCart size={20} />
-            <span>Ventas Lizz</span>
-          </NavLink>
-        )}
-
-        {!isVendedor && (
-          <NavLink 
-            to="/ventas-estefania" 
-            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-pink-600/20 text-pink-300 neon-border font-medium border-pink-500' : 'text-slate-400 hover:bg-slate-800 hover:text-pink-200'}`}
-          >
-            <ShoppingCart size={20} />
-            <span>Ventas Estefania</span>
-          </NavLink>
-        )}
-
         <NavLink 
           to="/ventas" 
           className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
         >
           <ShoppingCart size={20} />
-          <span>Ventas / Facturación</span>
+          <span>Ventas / Caja</span>
+        </NavLink>
+
+        <NavLink 
+          to="/gastos" 
+          className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
+        >
+          <Receipt size={20} />
+          <span>Egresos / Gastos</span>
         </NavLink>
       </nav>
       

@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
+import { Download } from 'lucide-react';
 
 const Productos = () => {
   const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [productos, setProductos] = useState([]);
+  const [kardexLogs, setKardexLogs] = useState([]);
   const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
+  const [viewMode, setViewMode] = useState('inventario'); // 'inventario', 'kardex'
   const [editingProduct, setEditingProduct] = useState(null);
 
   // Form state
@@ -88,11 +91,129 @@ const Productos = () => {
     }
   };
 
+  const fetchKardex = async () => {
+    if (!currentUser) return;
+    try {
+      const emailLower = currentUser.email?.toLowerCase() || '';
+      const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
+      const isEstefania = emailLower.includes('estefania');
+      const isVendor = isLizz || isEstefania;
+
+      let data = [];
+
+      if (isVendor) {
+        // Vendedoras: Consultar de forma segura usando cláusulas 'where' para cumplir las reglas de Firestore
+        const q1 = query(collection(db, 'kardex'), where('created_by', '==', currentUser.uid));
+        const q2 = query(collection(db, 'kardex'), where('userId', '==', currentUser.uid));
+        const q3 = query(collection(db, 'kardex'), where('vendedor', '==', currentUser.email));
+        
+        const [snap1, snap2, snap3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
+        
+        const map = new Map();
+        snap1.docs.forEach(doc => map.set(doc.id, { id: doc.id, ...doc.data() }));
+        snap2.docs.forEach(doc => map.set(doc.id, { id: doc.id, ...doc.data() }));
+        snap3.docs.forEach(doc => map.set(doc.id, { id: doc.id, ...doc.data() }));
+        
+        data = Array.from(map.values());
+      } else {
+        // Administrador: Puede consultar la colección completa sin problemas
+        const snapshot = await getDocs(collection(db, 'kardex'));
+        const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Administrador: filtrar según la selección de pestaña
+        if (activeTab === 'mio') {
+          data = allData.filter(d => {
+            const belongsToVendor = 
+              d.userEmail?.toLowerCase().includes('liz') || 
+              d.userEmail?.toLowerCase().includes('vendedor1') ||
+              d.vendedor?.toLowerCase().includes('liz') ||
+              d.vendedor?.toLowerCase().includes('vendedor1') ||
+              d.userEmail?.toLowerCase().includes('estefania') || 
+              d.vendedor?.toLowerCase().includes('estefania');
+            return d.created_by === currentUser.uid || d.userId === currentUser.uid || !belongsToVendor;
+          });
+        } else if (activeTab === 'lizz') {
+          data = allData.filter(d => 
+            d.userEmail?.toLowerCase().includes('liz') || 
+            d.userEmail?.toLowerCase().includes('vendedor1') ||
+            d.vendedor?.toLowerCase().includes('liz') ||
+            d.vendedor?.toLowerCase().includes('vendedor1')
+          );
+        } else if (activeTab === 'estefania') {
+          data = allData.filter(d => 
+            d.userEmail?.toLowerCase().includes('estefania') || 
+            d.vendedor?.toLowerCase().includes('estefania')
+          );
+        }
+      }
+
+      data.sort((a, b) => {
+        const tA = a.fecha?.toMillis ? a.fecha.toMillis() : (a.fecha ? new Date(a.fecha).getTime() : 0);
+        const tB = b.fecha?.toMillis ? b.fecha.toMillis() : (b.fecha ? new Date(b.fecha).getTime() : 0);
+        return tB - tA;
+      });
+
+      setKardexLogs(data);
+    } catch (error) {
+      console.error("Error cargando Kardex: ", error);
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (viewMode === 'inventario') {
+      if (productos.length === 0) return alert('No hay productos para exportar.');
+      const headers = ['ID', 'Producto', 'Costo Compra', 'Precio Venta', 'Stock'];
+      const rows = productos.map(p => [
+        p.id,
+        p.nombre,
+        p.valorCompra,
+        p.valorVenta,
+        p.stock
+      ]);
+
+      const csvContent = 
+        'data:text/csv;charset=utf-8,\uFEFF' + 
+        [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
+        
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `productos_export_${activeTab}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      if (kardexLogs.length === 0) return alert('No hay historial de movimientos para exportar.');
+      const headers = ['ID', 'Fecha', 'Producto', 'Tipo', 'Cantidad', 'Detalle'];
+      const rows = kardexLogs.map(k => [
+        k.id,
+        k.fecha?.toDate ? new Date(k.fecha.toDate()).toLocaleString() : 'Reciente',
+        k.productoNombre,
+        k.tipo,
+        k.cantidad,
+        k.detalle
+      ]);
+
+      const csvContent = 
+        'data:text/csv;charset=utf-8,\uFEFF' + 
+        [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
+        
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `kardex_export_${activeTab}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   useEffect(() => {
     if (currentUser) {
       fetchProductos();
+      fetchKardex();
     }
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, viewMode]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -104,7 +225,7 @@ const Productos = () => {
     setLoading(true);
     
     try {
-      await addDoc(collection(db, 'productos'), {
+      const docRef = await addDoc(collection(db, 'productos'), {
         nombre: formData.nombre,
         valorCompra: Number(formData.valorCompra),
         valorVenta: Number(formData.valorVenta),
@@ -113,6 +234,19 @@ const Productos = () => {
         created_by: currentUser.uid, // Campo de auditoría obligatorio
         userId: currentUser.uid,      // Compatibilidad legacy
         userEmail: currentUser.email,  // Compatibilidad legacy
+      });
+
+      // Kardex Logger
+      await addDoc(collection(db, 'kardex'), {
+        productoId: docRef.id,
+        productoNombre: formData.nombre,
+        tipo: 'entrada',
+        cantidad: Number(formData.stock),
+        detalle: 'Inventario inicial registrado',
+        fecha: serverTimestamp(),
+        created_by: currentUser.uid,
+        userId: currentUser.uid,
+        userEmail: currentUser.email
       });
       
       setFormData({ nombre: '', valorCompra: '', valorVenta: '', stock: '' });
@@ -132,6 +266,9 @@ const Productos = () => {
     if (!editingProduct) return;
     setLoading(true);
     try {
+      const originalProduct = productos.find(p => p.id === editingProduct.id);
+      const diff = Number(editingProduct.stock) - Number(originalProduct.stock);
+
       const ref = doc(db, 'productos', editingProduct.id);
       await updateDoc(ref, {
         nombre: editingProduct.nombre,
@@ -139,6 +276,21 @@ const Productos = () => {
         valorVenta: Number(editingProduct.valorVenta),
         stock: Number(editingProduct.stock)
       });
+
+      if (diff !== 0) {
+        await addDoc(collection(db, 'kardex'), {
+          productoId: editingProduct.id,
+          productoNombre: editingProduct.nombre,
+          tipo: diff > 0 ? 'entrada' : 'salida',
+          cantidad: Math.abs(diff),
+          detalle: 'Ajuste manual de stock',
+          fecha: serverTimestamp(),
+          created_by: currentUser.uid,
+          userId: currentUser.uid,
+          userEmail: currentUser.email
+        });
+      }
+
       setEditingProduct(null);
       fetchProductos();
       alert('Producto actualizado con éxito!');
@@ -195,11 +347,35 @@ const Productos = () => {
             </div>
           )}
         </div>
-        <button 
-          onClick={() => setShowForm(!showForm)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors self-start sm:self-auto"
+        <div className="flex gap-2 self-start sm:self-auto">
+          <button 
+            onClick={handleExportCSV}
+            className="bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/30 text-indigo-300 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-1.5"
+          >
+            <Download size={16} />
+            Exportar Excel
+          </button>
+          <button 
+            onClick={() => setShowForm(!showForm)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            {showForm ? 'Cancelar' : 'Añadir Producto'}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex border-b border-indigo-900/50 mb-6 gap-2">
+        <button
+          onClick={() => setViewMode('inventario')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${viewMode === 'inventario' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
         >
-          {showForm ? 'Cancelar' : 'Añadir Producto'}
+          Ver Inventario
+        </button>
+        <button
+          onClick={() => setViewMode('kardex')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${viewMode === 'kardex' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          Ver Historial (Kardex)
         </button>
       </div>
 
@@ -234,51 +410,93 @@ const Productos = () => {
         </div>
       )}
 
-      <div className="glass-panel rounded-xl border border-none overflow-hidden overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-transparent border-b border-none">
-              <th className="p-4 text-sm font-semibold text-slate-400">Producto</th>
-              <th className="p-4 text-sm font-semibold text-slate-400">Costo Compra</th>
-              <th className="p-4 text-sm font-semibold text-slate-400">Precio Venta</th>
-              <th className="p-4 text-sm font-semibold text-slate-400">Stock</th>
-              <th className="p-4 text-sm font-semibold text-slate-400">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {productos.length === 0 ? (
-              <tr>
-                <td colSpan="5" className="p-8 text-center text-slate-500">No hay productos registrados</td>
+      {viewMode === 'inventario' ? (
+        <div className="glass-panel rounded-xl border border-none overflow-hidden overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-transparent border-b border-none">
+                <th className="p-4 text-sm font-semibold text-slate-400">Producto</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Costo Compra</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Precio Venta</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Stock</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Acciones</th>
               </tr>
-            ) : (
-              productos.map(p => (
-                <tr key={p.id} className="border-b border-none hover:bg-transparent">
-                  <td className="p-4 font-medium text-slate-100">{p.nombre}</td>
-                  <td className="p-4 text-slate-400">${p.valorCompra}</td>
-                  <td className="p-4 text-emerald-600 font-bold">${p.valorVenta}</td>
-                  <td className="p-4 text-slate-400">
-                    <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-semibold">{p.stock}</span>
-                  </td>
-                  <td className="p-4 flex gap-2">
-                    <button
-                      onClick={() => setEditingProduct(p)}
-                      className="px-3 py-1 bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-semibold hover:bg-indigo-600/50 transition-colors"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => handleEliminar(p.id)}
-                      className="px-3 py-1 bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold hover:bg-rose-600/50 transition-colors"
-                    >
-                      Eliminar
-                    </button>
-                  </td>
+            </thead>
+            <tbody>
+              {productos.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="p-8 text-center text-slate-500">No hay productos registrados</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                productos.map(p => (
+                  <tr key={p.id} className="border-b border-none hover:bg-transparent">
+                    <td className="p-4 font-medium text-slate-100">{p.nombre}</td>
+                    <td className="p-4 text-slate-400">${p.valorCompra}</td>
+                    <td className="p-4 text-emerald-600 font-bold">${p.valorVenta}</td>
+                    <td className="p-4 text-slate-400">
+                      <span className={`px-2.5 py-1 rounded-md font-semibold border ${p.stock <= 0 ? 'bg-rose-900/30 text-rose-300 border-rose-500/30 font-bold' : (p.stock <= 3 ? 'bg-amber-900/30 text-amber-300 border-amber-500/30 font-semibold animate-pulse' : 'bg-indigo-900/20 text-indigo-300 border-indigo-500/10')}`}>
+                        {p.stock} {p.stock <= 3 && (p.stock > 0 ? ' (Bajo)' : ' (Agotado)')}
+                      </span>
+                    </td>
+                    <td className="p-4 flex gap-2">
+                      <button
+                        onClick={() => setEditingProduct(p)}
+                        className="px-3 py-1 bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-semibold hover:bg-indigo-600/50 transition-colors"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => handleEliminar(p.id)}
+                        className="px-3 py-1 bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold hover:bg-rose-600/50 transition-colors"
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="glass-panel rounded-xl border border-none overflow-hidden overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-transparent border-b border-none">
+                <th className="p-4 text-sm font-semibold text-slate-400">Fecha</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Producto</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Tipo</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Cantidad</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Detalle</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kardexLogs.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="p-8 text-center text-slate-500">No hay movimientos registrados en el Kardex</td>
+                </tr>
+              ) : (
+                kardexLogs.map(k => {
+                  const dateStr = k.fecha ? new Date(k.fecha.toDate()).toLocaleString() : 'Reciente';
+                  return (
+                    <tr key={k.id} className="border-b border-none hover:bg-transparent">
+                      <td className="p-4 text-slate-400">{dateStr}</td>
+                      <td className="p-4 font-medium text-slate-100">{k.productoNombre}</td>
+                      <td className="p-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${k.tipo === 'entrada' ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/30' : 'bg-rose-600/30 text-rose-300 border-rose-500/30'}`}>
+                          {k.tipo === 'entrada' ? 'Entrada' : 'Salida'}
+                        </span>
+                      </td>
+                      <td className="p-4 font-bold text-slate-200">{k.cantidad}</td>
+                      <td className="p-4 text-slate-400 text-sm">{k.detalle}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Modal de Edición de Producto */}
       {editingProduct && (

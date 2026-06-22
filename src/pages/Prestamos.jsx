@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
+import { MessageCircle, Download } from 'lucide-react';
 
 const Prestamos = () => {
   const { currentUser } = useAuth();
@@ -230,6 +231,69 @@ const Prestamos = () => {
     }
   };
 
+  const getEstadoCobro = (p) => {
+    if (p.estado !== 'activo') return { label: 'Pagado', color: 'bg-emerald-600/30 text-emerald-300 border-emerald-500/30' };
+    
+    const start = p.fechaInicio?.toDate ? p.fechaInicio.toDate() : new Date();
+    const diffTime = Math.abs(new Date() - start);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    let intervalDays = 30; // mensual
+    if (p.frecuenciaCobro === 'diario') intervalDays = 1;
+    else if (p.frecuenciaCobro === 'semanal') intervalDays = 7;
+    else if (p.frecuenciaCobro === 'quincenal') intervalDays = 15;
+    
+    if (diffDays > (intervalDays + 2)) {
+      return { label: 'En Mora', color: 'bg-rose-600/30 text-rose-300 border-rose-500/30 font-bold shadow-[0_0_10px_rgba(225,29,72,0.2)]' };
+    } else if (diffDays >= intervalDays) {
+      return { label: 'Por Vencer', color: 'bg-amber-600/30 text-amber-300 border-amber-500/30 font-semibold' };
+    }
+    return { label: 'Al Día', color: 'bg-emerald-600/30 text-emerald-300 border-emerald-500/30 font-semibold' };
+  };
+
+  const handleWhatsAppReminder = (p) => {
+    const phone = p.telefono || '';
+    const cleanPhone = phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.length === 10 ? `57${cleanPhone}` : cleanPhone;
+    
+    const message = `Hola *${p.nombreCompleto}*, te recordamos que tienes un abono pendiente de tu préstamo WILL. \n\n` +
+                    `• Frecuencia de cobro: *${p.frecuenciaCobro}* \n` +
+                    `• Saldo pendiente: *$${p.saldoPendiente}* \n\n` +
+                    `¡Agradecemos tu valiosa puntualidad! ✨`;
+    
+    const url = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleExportCSV = () => {
+    if (prestamos.length === 0) return alert('No hay préstamos para exportar.');
+    
+    const headers = ['ID', 'Cliente', 'Cedula', 'Telefono', 'Monto Principal', 'Interes (%)', 'Frecuencia', 'Saldo Pendiente', 'Estado'];
+    const rows = prestamos.map(p => [
+      p.id,
+      p.nombreCompleto,
+      p.cedula,
+      p.telefono,
+      p.montoPrincipal,
+      p.tasaInteres,
+      p.frecuenciaCobro,
+      p.saldoPendiente,
+      p.estado
+    ]);
+
+    const csvContent = 
+      'data:text/csv;charset=utf-8,\uFEFF' + 
+      [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `prestamos_export_${activeTab}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const emailLower = currentUser?.email?.toLowerCase() || '';
   const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
@@ -263,12 +327,21 @@ const Prestamos = () => {
             </div>
           )}
         </div>
-        <button 
-          onClick={() => setShowForm(!showForm)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors self-start sm:self-auto"
-        >
-          {showForm ? 'Cancelar' : 'Nuevo Préstamo'}
-        </button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          <button 
+            onClick={handleExportCSV}
+            className="bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/30 text-indigo-300 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-1.5"
+          >
+            <Download size={16} />
+            Exportar Excel
+          </button>
+          <button 
+            onClick={() => setShowForm(!showForm)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            {showForm ? 'Cancelar' : 'Nuevo Préstamo'}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -392,12 +465,26 @@ const Prestamos = () => {
                   <td className="p-4 text-slate-400">${p.montoPrincipal} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
                   <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro}</td>
                   <td className="p-4 text-indigo-600 font-bold">${p.saldoPendiente}</td>
-                  <td className="p-4 flex flex-wrap gap-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold text-center w-fit ${p.estado === 'activo' ? 'bg-emerald-100 text-emerald-700' : 'bg-transparent text-slate-300'}`}>
-                      {p.estado}
-                    </span>
+                  <td className="p-4 flex flex-wrap items-center gap-2">
+                    {(() => {
+                      const cobroInfo = getEstadoCobro(p);
+                      return (
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${cobroInfo.color}`}>
+                          {cobroInfo.label}
+                        </span>
+                      );
+                    })()}
                     {p.estado === 'activo' && (
-                      <button onClick={() => setAbonoModal({show:true, prestamo: p, monto: ''})} className="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg font-semibold transition-colors w-fit">
+                      <button 
+                        onClick={() => handleWhatsAppReminder(p)} 
+                        className="text-xs bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/40 border border-emerald-500/30 px-3 py-1.5 rounded-lg font-semibold transition-colors w-fit flex items-center gap-1"
+                      >
+                        <MessageCircle size={12} />
+                        Cobrar
+                      </button>
+                    )}
+                    {p.estado === 'activo' && (
+                      <button onClick={() => setAbonoModal({show:true, prestamo: p, monto: ''})} className="text-xs bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 border border-indigo-500/30 px-3 py-1.5 rounded-lg font-semibold transition-colors w-fit">
                         💳 Abonar
                       </button>
                     )}

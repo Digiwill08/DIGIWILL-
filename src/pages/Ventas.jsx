@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Ventas = () => {
@@ -129,6 +129,32 @@ const Ventas = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    if (ventas.length === 0) return alert('No hay ventas para exportar.');
+    
+    const headers = ['ID', 'Fecha', 'Cliente', 'Articulos', 'Total Venta', 'Tipo de Venta'];
+    const rows = ventas.map(v => [
+      v.id,
+      v.fechaVenta ? new Date(v.fechaVenta.toDate()).toLocaleString() : 'Reciente',
+      v.clienteNombre,
+      v.detalles.map(d => `${d.cantidad}x ${d.nombre}`).join('; '),
+      v.total,
+      v.tipoVenta === 'financiada' ? 'Credito' : 'Contado'
+    ]);
+
+    const csvContent = 
+      'data:text/csv;charset=utf-8,\uFEFF' + 
+      [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `ventas_export_${activeTab}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   useEffect(() => {
     if (currentUser) {
       fetchData();
@@ -223,12 +249,25 @@ const Ventas = () => {
         });
       }
 
-      // 2. Descontar Stock
+      // 2. Descontar Stock y registrar en Kardex
       for (const item of carrito) {
         const prod = productos.find(p => p.id === item.productoId);
         const ref = doc(db, 'productos', prod.id);
         await updateDoc(ref, {
           stock: prod.stock - item.cantidad
+        });
+
+        // Registrar en Kardex
+        await addDoc(collection(db, 'kardex'), {
+          productoId: item.productoId,
+          productoNombre: item.nombre,
+          tipo: 'salida',
+          cantidad: item.cantidad,
+          detalle: `Venta registrada de contado/crédito a cliente ${cliente.nombreCompleto}`,
+          fecha: serverTimestamp(),
+          created_by: currentUser.uid,
+          userId: currentUser.uid,
+          userEmail: currentUser.email
         });
       }
 
@@ -282,12 +321,21 @@ const Ventas = () => {
             </div>
           )}
         </div>
-        <button 
-          onClick={() => setShowForm(!showForm)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors self-start sm:self-auto"
-        >
-          {showForm ? 'Cancelar' : 'Nueva Venta'}
-        </button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          <button 
+            onClick={handleExportCSV}
+            className="bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/30 text-indigo-300 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-1.5"
+          >
+            <Download size={16} />
+            Exportar Excel
+          </button>
+          <button 
+            onClick={() => setShowForm(!showForm)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            {showForm ? 'Cancelar' : 'Nueva Venta'}
+          </button>
+        </div>
       </div>
 
       {showForm && (

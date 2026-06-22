@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
+import { Download } from 'lucide-react';
 
 const Clientes = () => {
   const { currentUser } = useAuth();
@@ -86,6 +87,32 @@ const Clientes = () => {
     } catch (error) {
       console.error("Error cargando clientes: ", error);
     }
+  };
+
+  const handleExportCSV = () => {
+    if (clientes.length === 0) return alert('No hay clientes para exportar.');
+    
+    const headers = ['ID', 'Nombre Completo', 'Cedula', 'Telefono', 'Email', 'Direccion'];
+    const rows = clientes.map(c => [
+      c.id,
+      c.nombreCompleto,
+      c.cedula,
+      c.telefono,
+      c.email,
+      c.direccion
+    ]);
+
+    const csvContent = 
+      'data:text/csv;charset=utf-8,\uFEFF' + 
+      [headers.join(','), ...rows.map(e => e.map(val => `"${val}"`).join(','))].join('\n');
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `clientes_export_${activeTab}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   useEffect(() => {
@@ -197,12 +224,21 @@ const Clientes = () => {
             </div>
           )}
         </div>
-        <button 
-          onClick={() => setShowForm(!showForm)}
-          className="neon-button px-4 py-2 rounded-lg font-medium self-start sm:self-auto"
-        >
-          {showForm ? 'Cancelar' : 'Añadir Cliente'}
-        </button>
+        <div className="flex gap-2 self-start sm:self-auto">
+          <button 
+            onClick={handleExportCSV}
+            className="bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/30 text-indigo-300 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-1.5"
+          >
+            <Download size={16} />
+            Exportar Excel
+          </button>
+          <button 
+            onClick={() => setShowForm(!showForm)}
+            className="neon-button px-4 py-2 rounded-lg font-medium"
+          >
+            {showForm ? 'Cancelar' : 'Añadir Cliente'}
+          </button>
+        </div>
       </div>
 
       {showForm && (
