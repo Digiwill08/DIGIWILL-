@@ -26,11 +26,6 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-transparent p-4 relative overflow-hidden text-slate-200">
       
-      {/* Background Gears */}
-      <div className="gear-bg gear-bg-1">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full"><path d="M12 2v4m0 12v4M2 12h4m12 0h4m-3.8-7.8l-2.8 2.8m-5.6 5.6l-2.8 2.8m11.2 0l-2.8-2.8m-5.6-5.6l-2.8-2.8" /><circle cx="12" cy="12" r="4" /></svg>
-      </div>
-
       <div className="max-w-md w-full glass-panel p-8 rounded-xl relative z-10">
         <div className="flex flex-col items-center mb-6">
           <img 

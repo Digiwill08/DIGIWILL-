@@ -80,36 +80,18 @@ body {
   transform: translateY(-1px);
 }
 
-/* Animación de engranaje */
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* Animación de constelaciones / parpadeo de estrellas */
+@keyframes twinkle {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.85; }
 }
 
-.gear-bg {
-  position: fixed;
-  opacity: 0.03;
-  pointer-events: none;
-  z-index: -1;
-  animation: spin-slow 35s linear infinite;
+.twinkle-slow {
+  animation: twinkle 6s ease-in-out infinite;
 }
 
-.gear-bg-1 {
-  top: -10%;
-  right: -5%;
-  width: 60vw;
-  height: 60vw;
-  color: #00D4FF;
-}
-
-.gear-bg-2 {
-  bottom: -10%;
-  left: -5%;
-  width: 50vw;
-  height: 50vw;
-  color: #8B5CF6;
-  animation-direction: reverse;
-  animation-duration: 50s;
+.twinkle-fast {
+  animation: twinkle 3s ease-in-out infinite;
 }
 
 /* FORMAS Y TABLAS */
