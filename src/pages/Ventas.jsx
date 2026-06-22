@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trash2, Plus, Download, MessageCircle } from 'lucide-react';
+import { Trash2, Plus, Download, MessageCircle, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../utils/auditLogger';
 
@@ -147,6 +147,107 @@ const Ventas = () => {
 
     const url = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
+  };
+
+  const handlePrintTicket = (v) => {
+    const printWindow = window.open('', '_blank', 'width=350,height=600');
+    if (!printWindow) return alert('Por favor habilita las ventanas emergentes (popups) para imprimir.');
+    
+    const articulosHtml = v.detalles.map(d => `
+      <tr>
+        <td style="padding: 4px 0; text-align: left;">${d.cantidad}x ${d.nombre}</td>
+        <td style="padding: 4px 0; text-align: right;">$${(d.cantidad * d.precioUnitario).toLocaleString()}</td>
+      </tr>
+    `).join('');
+
+    const fechaStr = v.fechaVenta ? new Date(v.fechaVenta.toDate()).toLocaleString() : new Date().toLocaleString();
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Ticket de Venta #${v.id.substring(0, 8)}</title>
+          <style>
+            @media print {
+              body { margin: 0; padding: 10px; font-family: 'Courier New', Courier, monospace; font-size: 11px; color: #000; }
+            }
+            body { 
+              width: 260px; 
+              margin: 0 auto; 
+              padding: 10px; 
+              font-family: 'Courier New', Courier, monospace; 
+              font-size: 11px; 
+              color: #000;
+              background-color: #fff;
+            }
+            .text-center { text-align: center; }
+            .header { margin-bottom: 10px; }
+            .logo { width: 50px; height: 50px; border-radius: 50%; object-fit: contain; }
+            .title { font-size: 14px; font-weight: bold; margin: 4px 0; }
+            .divider { border-top: 1px dashed #000; margin: 8px 0; }
+            table { width: 100%; border-collapse: collapse; }
+            .totals { margin-top: 10px; font-weight: bold; font-size: 12px; }
+            .footer { margin-top: 20px; font-size: 9px; line-height: 1.2; }
+          </style>
+        </head>
+        <body>
+          <div class="text-center header">
+            <img src="/logo.png" class="logo" alt="Logo" />
+            <div class="title">DIGIWILL</div>
+            <p style="margin: 2px 0;">Soluciones Comerciales & Crédito</p>
+            <p style="margin: 2px 0; font-size: 9px;">Ticket: #${v.id.substring(0, 8).toUpperCase()}</p>
+            <p style="margin: 2px 0; font-size: 9px;">Fecha: ${fechaStr}</p>
+          </div>
+          
+          <div class="divider"></div>
+          
+          <p style="margin: 4px 0;"><strong>Cliente:</strong> ${v.clienteNombre}</p>
+          <p style="margin: 4px 0;"><strong>Operador:</strong> ${v.userEmail || 'DIGIWILL Operator'}</p>
+          
+          <div class="divider"></div>
+          
+          <table>
+            <thead>
+              <tr style="border-bottom: 1px dashed #000;">
+                <th style="text-align: left; padding-bottom: 3px;">Detalle</th>
+                <th style="text-align: right; padding-bottom: 3px;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${articulosHtml}
+            </tbody>
+          </table>
+          
+          <div class="divider"></div>
+          
+          <table class="totals">
+            <tr>
+              <td style="text-align: left;">TOTAL:</td>
+              <td style="text-align: right;">$${v.total.toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td style="text-align: left; font-size: 9px; font-weight: normal;">Método:</td>
+              <td style="text-align: right; font-size: 9px; font-weight: normal; text-transform: uppercase;">${v.tipoVenta === 'financiada' ? 'A Crédito' : 'De Contado'}</td>
+            </tr>
+          </table>
+          
+          <div class="divider"></div>
+          
+          <div class="text-center footer">
+            <p style="margin: 3px 0; font-weight: bold;">¡Gracias por tu compra! 🛍️</p>
+            <p style="margin: 3px 0;">Conserva este soporte de pago.</p>
+            <p style="margin: 8px 0 0 0; font-size: 8px; color: #555;">DIGIWILL Platform</p>
+          </div>
+          
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const handleExportCSV = () => {
@@ -489,7 +590,7 @@ const Ventas = () => {
                     {v.detalles.map((d, i) => <div key={i}>{d.cantidad}x {d.nombre}</div>)}
                   </td>
                   <td className="p-4 text-emerald-600 font-bold">${v.total}</td>
-                  <td className="p-4 flex items-center gap-2">
+                  <td className="p-4 flex flex-wrap items-center gap-2">
                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${v.tipoVenta === 'financiada' ? 'bg-orange-600/20 text-orange-300 border border-orange-500/30' : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'}`}>
                       {v.tipoVenta === 'financiada' ? 'Crédito' : 'Contado'}
                     </span>
@@ -500,6 +601,14 @@ const Ventas = () => {
                     >
                       <MessageCircle size={12} />
                       Recibo
+                    </button>
+                    <button 
+                      onClick={() => handlePrintTicket(v)} 
+                      className="text-xs bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600/40 border border-indigo-500/30 p-1.5 rounded-lg transition-colors flex items-center gap-1"
+                      title="Imprimir Ticket POS"
+                    >
+                      <Printer size={12} />
+                      Ticket
                     </button>
                   </td>
                 </tr>
