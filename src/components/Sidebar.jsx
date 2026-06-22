@@ -4,7 +4,12 @@ import { LayoutDashboard, WalletCards, Package, Users, ShoppingCart, LogOut, Set
 import { useAuth } from '../context/AuthContext';
 
 const Sidebar = () => {
-  const { logout } = useAuth();
+  const { currentUser, logout } = useAuth();
+
+  const emailLower = currentUser?.email?.toLowerCase() || '';
+  const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
+  const isEstefania = emailLower.includes('estefania');
+  const isVendor = isLizz || isEstefania;
 
   return (
     <div className="w-full md:w-64 bg-slate-900 border-r border-indigo-900/50 h-auto md:h-full flex flex-col shrink-0 shadow-[4px_0_24px_rgba(79,70,229,0.1)] relative overflow-hidden z-10">
@@ -33,13 +38,15 @@ const Sidebar = () => {
           <span>Clientes</span>
         </NavLink>
         
-        <NavLink 
-          to="/prestamos" 
-          className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
-        >
-          <WalletCards size={20} />
-          <span>Préstamos WILL</span>
-        </NavLink>
+        {!isVendor && (
+          <NavLink 
+            to="/prestamos" 
+            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
+          >
+            <WalletCards size={20} />
+            <span>Préstamos WILL</span>
+          </NavLink>
+        )}
         
         <NavLink 
           to="/productos" 

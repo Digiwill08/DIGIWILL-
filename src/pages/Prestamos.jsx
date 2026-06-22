@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
@@ -6,6 +7,16 @@ import { MessageCircle, Download } from 'lucide-react';
 
 const Prestamos = () => {
   const { currentUser } = useAuth();
+
+  const emailLower = currentUser?.email?.toLowerCase() || '';
+  const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
+  const isEstefania = emailLower.includes('estefania');
+  const isVendor = isLizz || isEstefania;
+
+  if (isVendor) {
+    return <Navigate to="/" replace />;
+  }
+
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [prestamos, setPrestamos] = useState([]);
@@ -293,11 +304,6 @@ const Prestamos = () => {
     link.click();
     document.body.removeChild(link);
   };
-
-  const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('liz') || emailLower.includes('vendedor1');
-  const isEstefania = emailLower.includes('estefania');
-  const isVendor = isLizz || isEstefania;
 
   return (
     <div className="p-8 relative">
