@@ -3,6 +3,7 @@ import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { Download } from 'lucide-react';
+import { logActivity } from '../utils/auditLogger';
 
 const Productos = () => {
   const { currentUser } = useAuth();
@@ -248,6 +249,9 @@ const Productos = () => {
         userId: currentUser.uid,
         userEmail: currentUser.email
       });
+
+      // Auditoría
+      await logActivity(currentUser, 'creacion_producto', `Creó el producto '${formData.nombre}' con costo $${formData.valorCompra}, precio $${formData.valorVenta} y stock inicial ${formData.stock}`, 'productos', docRef.id);
       
       setFormData({ nombre: '', valorCompra: '', valorVenta: '', stock: '' });
       setShowForm(false);
@@ -291,6 +295,9 @@ const Productos = () => {
         });
       }
 
+      // Auditoría
+      await logActivity(currentUser, 'edicion_producto', `Editó el producto '${editingProduct.nombre}' (Nuevo costo: $${editingProduct.valorCompra}, nuevo precio: $${editingProduct.valorVenta}, nuevo stock: ${editingProduct.stock})`, 'productos', editingProduct.id);
+
       setEditingProduct(null);
       fetchProductos();
       alert('Producto actualizado con éxito!');
@@ -305,7 +312,14 @@ const Productos = () => {
   const handleEliminar = async (id) => {
     if (!window.confirm("¿Estás seguro de que deseas eliminar este producto?")) return;
     try {
+      const p = productos.find(prod => prod.id === id);
+      const pNombre = p ? p.nombre : id;
+
       await deleteDoc(doc(db, 'productos', id));
+
+      // Auditoría
+      await logActivity(currentUser, 'eliminacion_producto', `Eliminó el producto '${pNombre}'`, 'productos', id);
+
       fetchProductos();
       alert('Producto eliminado con éxito.');
     } catch (error) {

@@ -4,6 +4,7 @@ import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, or
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { MessageCircle, Download } from 'lucide-react';
+import { logActivity } from '../utils/auditLogger';
 
 const Prestamos = () => {
   const { currentUser } = useAuth();
@@ -148,7 +149,7 @@ const Prestamos = () => {
       const tasaI = Number(formData.tasaInteres);
       const totalConInteres = montoP + (montoP * (tasaI / 100));
 
-      await addDoc(collection(db, 'prestamos'), {
+      const loanRef = await addDoc(collection(db, 'prestamos'), {
         clienteId: formData.clienteId,
         nombreCompleto: clienteSeleccionado.nombreCompleto,
         cedula: clienteSeleccionado.cedula,
@@ -164,6 +165,9 @@ const Prestamos = () => {
         userId: currentUser.uid,      // Compatibilidad legacy
         userEmail: currentUser.email   // Compatibilidad legacy
       });
+
+      // Auditoría
+      await logActivity(currentUser, 'creacion_prestamo', `Creó un préstamo por valor principal de $${montoP} con interés del ${tasaI}% (Total a cobrar: $${totalConInteres}) al cliente '${clienteSeleccionado.nombreCompleto}'`, 'prestamos', loanRef.id);
       
       setFormData({ clienteId: '', montoPrincipal: '', tasaInteres: '', frecuenciaCobro: 'mensual' });
       setShowForm(false);
@@ -192,7 +196,7 @@ const Prestamos = () => {
 
     try {
       // Registrar pago
-      await addDoc(collection(db, 'pagos'), {
+      const pagoRef = await addDoc(collection(db, 'pagos'), {
         prestamoId: p.id,
         montoAbonado: monto,
         fechaPago: serverTimestamp(),
@@ -210,6 +214,9 @@ const Prestamos = () => {
         saldoPendiente: nuevoSaldo,
         estado: estadoNuevo
       });
+
+      // Auditoría
+      await logActivity(currentUser, 'abono_prestamo', `Registró un abono de $${monto} para el préstamo del cliente '${p.nombreCompleto}' (Nuevo saldo: $${nuevoSaldo})`, 'pagos', pagoRef.id);
 
       setAbonoModal({ show: false, prestamo: null, monto: '' });
       fetchData();

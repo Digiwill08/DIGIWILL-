@@ -60,6 +60,17 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin() || isOwner(resource);
       allow create: if isAdmin() || isCreatingWithOwnUid();
     }
+
+    match /cierres_caja/{document=**} {
+      allow read, update, delete: if isAdmin() || isOwner(resource);
+      allow create: if isAdmin() || isCreatingWithOwnUid();
+    }
+
+    match /auditoria_logs/{document=**} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.created_by == request.auth.uid;
+      allow update, delete: if false;
+    }
     
     // ==========================================
     // DATOS FINANCIEROS Y CONFIDENCIALES (Solo Jefe)

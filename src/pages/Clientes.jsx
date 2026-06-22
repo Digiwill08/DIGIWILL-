@@ -3,6 +3,7 @@ import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { Download } from 'lucide-react';
+import { logActivity } from '../utils/auditLogger';
 
 const Clientes = () => {
   const { currentUser } = useAuth();
@@ -131,7 +132,7 @@ const Clientes = () => {
     setLoading(true);
     
     try {
-      await addDoc(collection(db, 'clientes'), {
+      const clientRef = await addDoc(collection(db, 'clientes'), {
         nombreCompleto: formData.nombreCompleto,
         cedula: formData.cedula,
         telefono: formData.telefono,
@@ -142,6 +143,9 @@ const Clientes = () => {
         userId: currentUser.uid,      // Legacy
         userEmail: currentUser.email,  // Legacy
       });
+
+      // Auditoría
+      await logActivity(currentUser, 'creacion_cliente', `Registró al cliente '${formData.nombreCompleto}' (C.C: ${formData.cedula}, Tel: ${formData.telefono})`, 'clientes', clientRef.id);
       
       setFormData({ nombreCompleto: '', cedula: '', telefono: '', email: '', direccion: '' });
       setShowForm(false);
@@ -168,6 +172,10 @@ const Clientes = () => {
         email: editingCliente.email,
         direccion: editingCliente.direccion
       });
+
+      // Auditoría
+      await logActivity(currentUser, 'edicion_cliente', `Editó la información del cliente '${editingCliente.nombreCompleto}' (C.C: ${editingCliente.cedula}, Tel: ${editingCliente.telefono})`, 'clientes', editingCliente.id);
+
       setEditingCliente(null);
       fetchClientes();
       alert('Cliente actualizado con éxito!');
@@ -182,7 +190,14 @@ const Clientes = () => {
   const handleEliminar = async (id) => {
     if (!window.confirm("¿Estás seguro de que deseas eliminar este cliente?")) return;
     try {
+      const c = clientes.find(client => client.id === id);
+      const cNombre = c ? c.nombreCompleto : id;
+
       await deleteDoc(doc(db, 'clientes', id));
+
+      // Auditoría
+      await logActivity(currentUser, 'eliminacion_cliente', `Eliminó al cliente '${cNombre}'`, 'clientes', id);
+
       fetchClientes();
       alert('Cliente eliminado con éxito.');
     } catch (error) {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, WalletCards, Package, Users, ShoppingCart, LogOut, Settings, Receipt } from 'lucide-react';
+import { LayoutDashboard, WalletCards, Package, Users, ShoppingCart, LogOut, Settings, Receipt, Coins } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Sidebar = () => {
@@ -70,6 +70,14 @@ const Sidebar = () => {
         >
           <Receipt size={20} />
           <span>Egresos / Gastos</span>
+        </NavLink>
+
+        <NavLink 
+          to="/caja" 
+          className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
+        >
+          <Coins size={20} />
+          <span>Caja y Cierres</span>
         </NavLink>
       </nav>
       

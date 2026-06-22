@@ -3,6 +3,7 @@ import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { Receipt, Trash2, Edit } from 'lucide-react';
+import { logActivity } from '../utils/auditLogger';
 
 const Gastos = () => {
   const { currentUser } = useAuth();
@@ -104,7 +105,7 @@ const Gastos = () => {
     setLoading(true);
     
     try {
-      await addDoc(collection(db, 'gastos'), {
+      const gastoRef = await addDoc(collection(db, 'gastos'), {
         categoria: formData.categoria,
         monto: Number(formData.monto),
         descripcion: formData.descripcion,
@@ -113,6 +114,9 @@ const Gastos = () => {
         userId: currentUser.uid,      
         userEmail: currentUser.email,  
       });
+
+      // Auditoría
+      await logActivity(currentUser, 'creacion_gasto', `Registró un egreso de $${formData.monto} en la categoría '${formData.categoria}' (${formData.descripcion})`, 'gastos', gastoRef.id);
       
       setFormData({ categoria: 'Otros', monto: '', descripcion: '' });
       setShowForm(false);
@@ -137,6 +141,10 @@ const Gastos = () => {
         monto: Number(editingGasto.monto),
         descripcion: editingGasto.descripcion
       });
+
+      // Auditoría
+      await logActivity(currentUser, 'edicion_gasto', `Editó el egreso de la categoría '${editingGasto.categoria}' por monto $${editingGasto.monto} (${editingGasto.descripcion})`, 'gastos', editingGasto.id);
+
       setEditingGasto(null);
       fetchGastos();
       alert('Gasto actualizado con éxito!');
@@ -151,12 +159,19 @@ const Gastos = () => {
   const handleEliminar = async (id) => {
     if (!window.confirm("¿Estás seguro de que deseas eliminar este registro de gasto?")) return;
     try {
+      const g = gastos.find(gas => gas.id === id);
+      const gDesc = g ? `${g.categoria}: $${g.monto} (${g.descripcion})` : id;
+
       await deleteDoc(doc(db, 'gastos', id));
+
+      // Auditoría
+      await logActivity(currentUser, 'eliminacion_gasto', `Eliminó el registro de egreso: ${gDesc}`, 'gastos', id);
+
       fetchGastos();
       alert('Gasto eliminado con éxito.');
     } catch (error) {
       console.error("Error al eliminar: ", error);
-      alert('Error al eliminar el gasto. Revisa los permisos.');
+      alert('Error al eliminar the gasto. Revisa los permisos.');
     }
   };
 

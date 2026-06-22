@@ -3,6 +3,7 @@ import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, or
 import { db } from '../firebase';
 import { Trash2, Plus, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../utils/auditLogger';
 
 const Ventas = () => {
   const { currentUser } = useAuth();
@@ -223,6 +224,9 @@ const Ventas = () => {
         userId: currentUser.uid,      // Legacy
         userEmail: currentUser.email   // Legacy
       });
+
+      // Auditoría
+      await logActivity(currentUser, 'creacion_venta', `Registró una venta (${tipoVenta === 'financiada' ? 'Financiada' : 'De contado'}) por un total de $${totalCarrito} al cliente '${cliente.nombreCompleto}'`, 'ventas', ventaRef.id);
 
       // 1.5 Si es financiada, crear préstamo
       if (tipoVenta === 'financiada') {

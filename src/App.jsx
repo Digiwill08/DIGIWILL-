@@ -8,6 +8,7 @@ import Productos from './pages/Productos';
 import Clientes from './pages/Clientes';
 import Ventas from './pages/Ventas';
 import Gastos from './pages/Gastos';
+import Caja from './pages/Caja';
 import Login from './pages/Login';
 import Register from './pages/Register';
 
@@ -45,6 +46,7 @@ function App() {
                     <Route path="/productos" element={<Productos />} />
                     <Route path="/ventas" element={<Ventas />} />
                     <Route path="/gastos" element={<Gastos />} />
+                    <Route path="/caja" element={<Caja />} />
                   </Routes>
                 </main>
               </div>
