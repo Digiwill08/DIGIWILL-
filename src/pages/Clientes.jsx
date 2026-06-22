@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,6 +8,7 @@ const Clientes = () => {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [clientes, setClientes] = useState([]);
+  const [filtroVendedor, setFiltroVendedor] = useState('mio');
 
   const [formData, setFormData] = useState({
     nombreCompleto: '',
@@ -18,15 +19,59 @@ const Clientes = () => {
   });
 
   const fetchClientes = async () => {
+    if (!currentUser) return;
     try {
-      const q = query(collection(db, 'clientes'), orderBy('fechaRegistro', 'desc'));
-      const snapshot = await getDocs(q);
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const emailLower = currentUser.email?.toLowerCase() || '';
+      const isLizz = emailLower.includes('lizz');
+      const isEstefania = emailLower.includes('estefania');
+      const isVendor = isLizz || isEstefania;
 
-      const userEmail = currentUser?.email?.toLowerCase();
-      if (userEmail !== 'wilmerjosevegaacevedo@gmail.com') {
-        data = data.filter(d => d.vendedor === userEmail);
+      const snapshot = await getDocs(collection(db, 'clientes'));
+      const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let data = [];
+
+      if (isVendor) {
+        // Vendedoras: solo ven sus propios clientes (nuevos o heredados)
+        data = allData.filter(d => {
+          const isOwner = d.userId === currentUser.uid;
+          const matchesEmail = isLizz 
+            ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+            : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
+          return isOwner || matchesEmail;
+        });
+      } else {
+        // Administrador: filtrar según la selección del dropdown
+        if (filtroVendedor === 'mio') {
+          data = allData.filter(d => {
+            const belongsToVendor = 
+              d.userEmail?.toLowerCase().includes('lizz') || 
+              d.vendedor?.toLowerCase().includes('lizz') ||
+              d.userEmail?.toLowerCase().includes('estefania') || 
+              d.vendedor?.toLowerCase().includes('estefania');
+            return d.userId === currentUser.uid || !belongsToVendor;
+          });
+        } else if (filtroVendedor === 'lizz') {
+          data = allData.filter(d => 
+            d.userEmail?.toLowerCase().includes('lizz') || 
+            d.vendedor?.toLowerCase().includes('lizz')
+          );
+        } else if (filtroVendedor === 'estefania') {
+          data = allData.filter(d => 
+            d.userEmail?.toLowerCase().includes('estefania') || 
+            d.vendedor?.toLowerCase().includes('estefania')
+          );
+        } else {
+          // 'todos'
+          data = allData;
+        }
       }
+
+      // Ordenar en memoria por fechaRegistro desc
+      data.sort((a, b) => {
+        const tA = a.fechaRegistro?.toMillis ? a.fechaRegistro.toMillis() : (a.fechaRegistro ? new Date(a.fechaRegistro).getTime() : 0);
+        const tB = b.fechaRegistro?.toMillis ? b.fechaRegistro.toMillis() : (b.fechaRegistro ? new Date(b.fechaRegistro).getTime() : 0);
+        return tB - tA;
+      });
 
       setClientes(data);
     } catch (error) {
@@ -35,8 +80,10 @@ const Clientes = () => {
   };
 
   useEffect(() => {
-    fetchClientes();
-  }, []);
+    if (currentUser) {
+      fetchClientes();
+    }
+  }, [currentUser, filtroVendedor]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -44,6 +91,7 @@ const Clientes = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!currentUser) return;
     setLoading(true);
     
     try {
@@ -54,7 +102,8 @@ const Clientes = () => {
         email: formData.email,
         direccion: formData.direccion,
         fechaRegistro: serverTimestamp(),
-        vendedor: currentUser?.email || 'admin'
+        userId: currentUser.uid,
+        userEmail: currentUser.email,
       });
       
       setFormData({ nombreCompleto: '', cedula: '', telefono: '', email: '', direccion: '' });
@@ -69,13 +118,35 @@ const Clientes = () => {
     }
   };
 
+  const emailLower = currentUser?.email?.toLowerCase() || '';
+  const isLizz = emailLower.includes('lizz');
+  const isEstefania = emailLower.includes('estefania');
+  const isVendor = isLizz || isEstefania;
+
   return (
     <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold text-slate-100">Base de Clientes</h2>
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-100">Base de Clientes</h2>
+          {!isVendor && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-slate-400 text-sm">Ver registros de:</span>
+              <select 
+                value={filtroVendedor} 
+                onChange={(e) => setFiltroVendedor(e.target.value)} 
+                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+              >
+                <option value="mio">Mis Clientes (Mío)</option>
+                <option value="lizz">Lizz</option>
+                <option value="estefania">Estefanía</option>
+                <option value="todos">Todos</option>
+              </select>
+            </div>
+          )}
+        </div>
         <button 
           onClick={() => setShowForm(!showForm)}
-          className="neon-button px-4 py-2 rounded-lg font-medium"
+          className="neon-button px-4 py-2 rounded-lg font-medium self-start sm:self-auto"
         >
           {showForm ? 'Cancelar' : 'Añadir Cliente'}
         </button>

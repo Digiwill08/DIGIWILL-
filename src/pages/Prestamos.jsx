@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-
-const Prestamos = () => {
+import { useAuth } from '../context/AuthContext';const Prestamos = () => {
+  const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [prestamos, setPrestamos] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [filtroVendedor, setFiltroVendedor] = useState('mio');
   
   // Modal de Abonos
   const [abonoModal, setAbonoModal] = useState({ show: false, prestamo: null, monto: '' });
@@ -22,36 +21,87 @@ const Prestamos = () => {
     clienteId: '',
     montoPrincipal: '',
     tasaInteres: '',
-    frecuenciaCobro: 'mensual',
-    numeroCuotas: ''
+    frecuenciaCobro: 'mensual'
   });
 
   const fetchData = async () => {
+    if (!currentUser) return;
     try {
-      // Cargar préstamos
-      const qPrestamos = query(collection(db, 'prestamos'), orderBy('fechaInicio', 'desc'));
-      const snapPrestamos = await getDocs(qPrestamos);
-      setPrestamos(snapPrestamos.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const emailLower = currentUser.email?.toLowerCase() || '';
+      const isLizz = emailLower.includes('lizz');
+      const isEstefania = emailLower.includes('estefania');
+      const isVendor = isLizz || isEstefania;
 
-      // Cargar clientes para el select
-      const qClientes = query(collection(db, 'clientes'), orderBy('nombreCompleto', 'asc'));
-      const snapClientes = await getDocs(qClientes);
-      setClientes(snapClientes.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const snapPrestamos = await getDocs(collection(db, 'prestamos'));
+      const allPrestamos = snapPrestamos.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const snapClientes = await getDocs(collection(db, 'clientes'));
+      const allClientes = snapClientes.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      let prestamosData = [];
+      let clientesData = [];
+
+      if (isVendor) {
+        // Vendedoras: filtrar por su propio userId, userEmail o vendedor
+        const filterFn = d => {
+          const isOwner = d.userId === currentUser.uid;
+          const matchesEmail = isLizz 
+            ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+            : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
+          return isOwner || matchesEmail;
+        };
+        prestamosData = allPrestamos.filter(filterFn);
+        clientesData = allClientes.filter(filterFn);
+      } else {
+        // Administrador: filtrar según la selección
+        const filterFn = d => {
+          if (filtroVendedor === 'mio') {
+            const belongsToVendor = 
+              d.userEmail?.toLowerCase().includes('lizz') || 
+              d.vendedor?.toLowerCase().includes('lizz') ||
+              d.userEmail?.toLowerCase().includes('estefania') || 
+              d.vendedor?.toLowerCase().includes('estefania');
+            return d.userId === currentUser.uid || !belongsToVendor;
+          } else if (filtroVendedor === 'lizz') {
+            return d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz');
+          } else if (filtroVendedor === 'estefania') {
+            return d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania');
+          } else {
+            return true; // 'todos'
+          }
+        };
+        prestamosData = allPrestamos.filter(filterFn);
+        clientesData = allClientes.filter(filterFn);
+      }
+
+      // Ordenar en memoria
+      prestamosData.sort((a, b) => {
+        const tA = a.fechaInicio?.toMillis ? a.fechaInicio.toMillis() : (a.fechaInicio ? new Date(a.fechaInicio).getTime() : 0);
+        const tB = b.fechaInicio?.toMillis ? b.fechaInicio.toMillis() : (b.fechaInicio ? new Date(b.fechaInicio).getTime() : 0);
+        return tB - tA;
+      });
+
+      clientesData.sort((a, b) => (a.nombreCompleto || '').localeCompare(b.nombreCompleto || ''));
+
+      setPrestamos(prestamosData);
+      setClientes(clientesData);
     } catch (error) {
       console.error("Error cargando datos: ", error);
     }
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser, filtroVendedor]);
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!currentUser) return;
     if (!formData.clienteId) {
       alert("Por favor selecciona un cliente.");
       return;
@@ -63,26 +113,7 @@ const Prestamos = () => {
     try {
       const montoP = Number(formData.montoPrincipal);
       const tasaI = Number(formData.tasaInteres);
-      const numeroCuotasNum = Number(formData.numeroCuotas);
       const totalConInteres = montoP + (montoP * (tasaI / 100));
-
-      const cuotasList = [];
-      const montoCuota = totalConInteres / numeroCuotasNum;
-      let currentFecha = new Date();
-      for (let i = 1; i <= numeroCuotasNum; i++) {
-        if (formData.frecuenciaCobro === 'diario') currentFecha.setDate(currentFecha.getDate() + 1);
-        else if (formData.frecuenciaCobro === 'semanal') currentFecha.setDate(currentFecha.getDate() + 7);
-        else if (formData.frecuenciaCobro === 'quincenal') currentFecha.setDate(currentFecha.getDate() + 15);
-        else if (formData.frecuenciaCobro === 'mensual') currentFecha.setMonth(currentFecha.getMonth() + 1);
-        
-        cuotasList.push({
-          numero: i,
-          monto: montoCuota,
-          saldo: montoCuota,
-          fechaVencimiento: new Date(currentFecha.getTime()),
-          estado: 'pendiente'
-        });
-      }
 
       await addDoc(collection(db, 'prestamos'), {
         clienteId: formData.clienteId,
@@ -92,15 +123,15 @@ const Prestamos = () => {
         montoPrincipal: montoP,
         tasaInteres: tasaI,
         frecuenciaCobro: formData.frecuenciaCobro,
-        numeroCuotas: numeroCuotasNum,
-        cuotas: cuotasList,
         fechaInicio: serverTimestamp(),
         estado: 'activo',
         saldoPendiente: totalConInteres,
-        totalInicial: totalConInteres
+        totalInicial: totalConInteres,
+        userId: currentUser.uid,
+        userEmail: currentUser.email
       });
       
-      setFormData({ clienteId: '', montoPrincipal: '', tasaInteres: '', frecuenciaCobro: 'mensual', numeroCuotas: '' });
+      setFormData({ clienteId: '', montoPrincipal: '', tasaInteres: '', frecuenciaCobro: 'mensual' });
       setShowForm(false);
       fetchData();
       alert('Préstamo registrado con éxito!');
@@ -114,6 +145,7 @@ const Prestamos = () => {
 
   const handleAbonar = async (e) => {
     e.preventDefault();
+    if (!currentUser) return;
     setLoading(true);
     const monto = Number(abonoModal.monto);
     const p = abonoModal.prestamo;
@@ -129,27 +161,10 @@ const Prestamos = () => {
       await addDoc(collection(db, 'pagos'), {
         prestamoId: p.id,
         montoAbonado: monto,
-        fechaPago: serverTimestamp()
+        fechaPago: serverTimestamp(),
+        userId: currentUser.uid,
+        userEmail: currentUser.email
       });
-
-      // Actualizar cuotas si existen
-      let montoRestante = monto;
-      let nuevasCuotas = p.cuotas ? [...p.cuotas] : [];
-      
-      if (nuevasCuotas.length > 0) {
-        for (let i = 0; i < nuevasCuotas.length; i++) {
-          if (nuevasCuotas[i].estado === 'pendiente' && montoRestante > 0) {
-            if (montoRestante >= nuevasCuotas[i].saldo) {
-              montoRestante -= nuevasCuotas[i].saldo;
-              nuevasCuotas[i].saldo = 0;
-              nuevasCuotas[i].estado = 'pagado';
-            } else {
-              nuevasCuotas[i].saldo -= montoRestante;
-              montoRestante = 0;
-            }
-          }
-        }
-      }
 
       // Actualizar préstamo
       const nuevoSaldo = p.saldoPendiente - monto;
@@ -158,8 +173,7 @@ const Prestamos = () => {
       const prestamoRef = doc(db, 'prestamos', p.id);
       await updateDoc(prestamoRef, {
         saldoPendiente: nuevoSaldo,
-        estado: estadoNuevo,
-        cuotas: nuevasCuotas
+        estado: estadoNuevo
       });
 
       setAbonoModal({ show: false, prestamo: null, monto: '' });
@@ -193,52 +207,35 @@ const Prestamos = () => {
     }
   };
 
-  const generarPDF = () => {
-    const p = historialModal.prestamo;
-    const doc = new jsPDF();
-    
-    // Cabecera
-    doc.setFontSize(22);
-    doc.setTextColor(79, 70, 229);
-    doc.text('DIGIWILL - Estado de Cuenta', 105, 20, null, null, 'center');
-    
-    // Info Cliente
-    doc.setFontSize(12);
-    doc.setTextColor(60, 60, 60);
-    doc.text(`Cliente: ${p.nombreCompleto}`, 14, 35);
-    doc.text(`Cedula: ${p.cedula || 'N/A'}`, 14, 42);
-    doc.text(`Telefono: ${p.telefono || 'N/A'}`, 14, 49);
-    
-    // Info Prestamo
-    doc.text(`Total Emitido: $${p.totalInicial}`, 120, 35);
-    doc.text(`Saldo Pendiente: $${p.saldoPendiente}`, 120, 42);
-    doc.text(`Estado: ${p.estado.toUpperCase()}`, 120, 49);
-
-    // Historial
-    const tableData = historialModal.pagos.map(pago => [
-      pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Hoy',
-      `$${pago.montoAbonado}`
-    ]);
-
-    doc.autoTable({
-      startY: 60,
-      head: [['Fecha y Hora de Abono', 'Monto Pagado']],
-      body: tableData.length > 0 ? tableData : [['No hay abonos registrados', '-']],
-      theme: 'grid',
-      headStyles: { fillColor: [79, 70, 229] },
-      styles: { fontSize: 10 }
-    });
-
-    doc.save(`Estado_Cuenta_${p.nombreCompleto.replace(/\s+/g, '_')}.pdf`);
-  };
+  const emailLower = currentUser?.email?.toLowerCase() || '';
+  const isLizz = emailLower.includes('lizz');
+  const isEstefania = emailLower.includes('estefania');
+  const isVendor = isLizz || isEstefania;
 
   return (
     <div className="p-8 relative">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold text-slate-100">Préstamos WILL</h2>
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-100">Préstamos WILL</h2>
+          {!isVendor && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-slate-400 text-sm">Ver registros de:</span>
+              <select 
+                value={filtroVendedor} 
+                onChange={(e) => setFiltroVendedor(e.target.value)} 
+                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+              >
+                <option value="mio">Mis Préstamos (Mío)</option>
+                <option value="lizz">Lizz</option>
+                <option value="estefania">Estefanía</option>
+                <option value="todos">Todos</option>
+              </select>
+            </div>
+          )}
+        </div>
         <button 
           onClick={() => setShowForm(!showForm)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors self-start sm:self-auto"
         >
           {showForm ? 'Cancelar' : 'Nuevo Préstamo'}
         </button>
@@ -267,20 +264,14 @@ const Prestamos = () => {
                 <label className="block text-sm font-medium text-slate-300 mb-1">Tasa de Interés (%)</label>
                 <input required type="number" name="tasaInteres" value={formData.tasaInteres} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" />
               </div>
-              <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia de Cobro</label>
-                  <select name="frecuenciaCobro" value={formData.frecuenciaCobro} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none glass-panel">
-                    <option value="diario">Diario</option>
-                    <option value="semanal">Semanal</option>
-                    <option value="quincenal">Quincenal</option>
-                    <option value="mensual">Mensual</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Número de Cuotas</label>
-                  <input required type="number" min="1" name="numeroCuotas" value={formData.numeroCuotas} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia de Cobro</label>
+                <select name="frecuenciaCobro" value={formData.frecuenciaCobro} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none glass-panel">
+                  <option value="diario">Diario</option>
+                  <option value="semanal">Semanal</option>
+                  <option value="quincenal">Quincenal</option>
+                  <option value="mensual">Mensual</option>
+                </select>
               </div>
             </div>
             <div className="pt-4">
@@ -334,67 +325,19 @@ const Prestamos = () => {
                           {pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Reciente'}
                         </p>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-emerald-500">+${pago.montoAbonado}</span>
-                        <a 
-                          href={`https://wa.me/?text=${encodeURIComponent(`🧾 DIGIWILL - Recibo de Abono\nCliente: ${historialModal.prestamo?.nombreCompleto}\nFecha: ${pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Hoy'}\nMonto Abonado: $${pago.montoAbonado}\nSaldo Restante: $${historialModal.prestamo?.saldoPendiente}`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg transition-colors text-xs font-semibold"
-                        >
-                          WhatsApp
-                        </a>
-                      </div>
+                      <span className="font-bold text-emerald-500">+${pago.montoAbonado}</span>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
             
-            <div className="mt-4 pt-4 border-t border-transparent flex justify-between">
-              <button type="button" onClick={generarPDF} className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                📄 Descargar PDF
-              </button>
+            <div className="mt-4 pt-4 border-t border-transparent text-right">
               <button type="button" onClick={() => setHistorialModal({show:false, prestamo:null, pagos:[]})} className="px-4 py-2 text-slate-400 hover:bg-transparent rounded-lg font-medium">Cerrar</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Resumen de Valores Totales */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="glass-panel p-4 rounded-xl border border-indigo-500/30 flex justify-between items-center bg-indigo-900/10">
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase">Deuda Total Emitida</p>
-            <p className="text-2xl font-bold text-slate-200 mt-1">
-              ${prestamos.reduce((sum, p) => sum + (Number(p.totalInicial) || Number(p.montoPrincipal) || 0), 0).toLocaleString()}
-            </p>
-          </div>
-          <div className="text-2xl">💰</div>
-        </div>
-        <div className="glass-panel p-4 rounded-xl border border-emerald-500/30 flex justify-between items-center bg-emerald-900/10">
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase">Total Pagado / Recaudado</p>
-            <p className="text-2xl font-bold text-emerald-400 mt-1">
-              ${prestamos.reduce((sum, p) => {
-                const total = Number(p.totalInicial) || Number(p.montoPrincipal) || 0;
-                const pendiente = Number(p.saldoPendiente) || 0;
-                return sum + (total - pendiente);
-              }, 0).toLocaleString()}
-            </p>
-          </div>
-          <div className="text-2xl">✅</div>
-        </div>
-        <div className="glass-panel p-4 rounded-xl border border-orange-500/30 flex justify-between items-center bg-orange-900/10">
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase">Saldo Pendiente (Faltante)</p>
-            <p className="text-2xl font-bold text-orange-400 mt-1">
-              ${prestamos.reduce((sum, p) => sum + Number(p.saldoPendiente || 0), 0).toLocaleString()}
-            </p>
-          </div>
-          <div className="text-2xl">⏳</div>
-        </div>
-      </div>
 
       <div className="glass-panel rounded-xl  border border-none overflow-hidden">
         <table className="w-full text-left border-collapse">
@@ -413,30 +356,15 @@ const Prestamos = () => {
                 <td colSpan="5" className="p-8 text-center text-slate-500">No hay préstamos registrados</td>
               </tr>
             ) : (
-              prestamos.map(p => {
-                let enMora = false;
-                if (p.estado === 'activo' && p.cuotas) {
-                   const cuotasPendientes = p.cuotas.filter(c => c.estado === 'pendiente');
-                   if (cuotasPendientes.length > 0) {
-                     const firstPending = cuotasPendientes[0];
-                     // Comparar asumiendo Timestamp
-                     if (firstPending.fechaVencimiento && (firstPending.fechaVencimiento.toDate ? firstPending.fechaVencimiento.toDate() : new Date(firstPending.fechaVencimiento)) < new Date()) {
-                       enMora = true;
-                     }
-                   }
-                }
-                const estadoVisual = enMora ? 'MORA' : p.estado;
-                const estadoColor = enMora ? 'bg-red-500/20 text-red-500 border border-red-500/50' : (p.estado === 'activo' ? 'bg-emerald-100 text-emerald-700' : 'bg-transparent text-slate-300');
-
-                return (
+              prestamos.map(p => (
                 <tr key={p.id} className="border-b border-none hover:bg-transparent">
                   <td className="p-4 font-medium text-slate-100">{p.nombreCompleto} <br/><span className="text-xs text-slate-500">{p.cedula}</span></td>
                   <td className="p-4 text-slate-400">${p.montoPrincipal} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
-                  <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro} {p.numeroCuotas && `(${p.numeroCuotas} cuotas)`}</td>
+                  <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro}</td>
                   <td className="p-4 text-indigo-600 font-bold">${p.saldoPendiente}</td>
                   <td className="p-4 flex flex-wrap gap-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-bold text-center w-fit uppercase ${estadoColor}`}>
-                      {estadoVisual}
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold text-center w-fit ${p.estado === 'activo' ? 'bg-emerald-100 text-emerald-700' : 'bg-transparent text-slate-300'}`}>
+                      {p.estado}
                     </span>
                     {p.estado === 'activo' && (
                       <button onClick={() => setAbonoModal({show:true, prestamo: p, monto: ''})} className="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg font-semibold transition-colors w-fit">
@@ -448,7 +376,7 @@ const Prestamos = () => {
                     </button>
                   </td>
                 </tr>
-              )})
+              ))
             )}
           </tbody>
         </table>

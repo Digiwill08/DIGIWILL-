@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Trash2, Plus } from 'lucide-react';
-
-import { useAuth } from '../context/AuthContext';
-
-const Ventas = () => {
+import { useAuth } from '../context/AuthContext';const Ventas = () => {
   const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [filtroVendedor, setFiltroVendedor] = useState('mio');
   
   // Datos
   const [ventas, setVentas] = useState([]);
@@ -27,51 +25,86 @@ const Ventas = () => {
   const [tipoVenta, setTipoVenta] = useState('contado');
   const [tasaInteres, setTasaInteres] = useState('');
   const [frecuenciaCobro, setFrecuenciaCobro] = useState('mensual');
-  const [numeroCuotas, setNumeroCuotas] = useState('');
 
   const fetchData = async () => {
+    if (!currentUser) return;
     try {
-      // Cargar Ventas
-      const qVentas = query(collection(db, 'ventas'), orderBy('fechaVenta', 'desc'));
-      const snapVentas = await getDocs(qVentas);
-      let vData = snapVentas.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      const qClientes = query(collection(db, 'clientes'), orderBy('nombreCompleto', 'asc'));
-      const snapClientes = await getDocs(qClientes);
-      let cData = snapClientes.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const emailLower = currentUser.email?.toLowerCase() || '';
+      const isLizz = emailLower.includes('lizz');
+      const isEstefania = emailLower.includes('estefania');
+      const isVendor = isLizz || isEstefania;
 
-      const qProductos = query(collection(db, 'productos'), orderBy('nombre', 'asc'));
-      const snapProductos = await getDocs(qProductos);
-      let pData = snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(p => p.stock > 0);
+      const snapVentas = await getDocs(collection(db, 'ventas'));
+      const allVentas = snapVentas.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      const userEmail = currentUser?.email?.toLowerCase();
-      if (userEmail !== 'wilmerjosevegaacevedo@gmail.com') {
-        vData = vData.filter(d => d.vendedor === userEmail);
-        cData = cData.filter(d => d.vendedor === userEmail);
-        pData = pData.filter(d => d.vendedor === userEmail);
+      const snapClientes = await getDocs(collection(db, 'clientes'));
+      const allClientes = snapClientes.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const snapProductos = await getDocs(collection(db, 'productos'));
+      const allProductos = snapProductos.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      let ventasData = [];
+      let clientesData = [];
+      let productosData = [];
+
+      if (isVendor) {
+        // Vendedoras: filtrar por su propio userId, userEmail o vendedor
+        const filterFn = d => {
+          const isOwner = d.userId === currentUser.uid;
+          const matchesEmail = isLizz 
+            ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+            : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
+          return isOwner || matchesEmail;
+        };
+        ventasData = allVentas.filter(filterFn);
+        clientesData = allClientes.filter(filterFn);
+        productosData = allProductos.filter(filterFn);
+      } else {
+        // Administrador: filtrar según la selección
+        const filterFn = d => {
+          if (filtroVendedor === 'mio') {
+            const belongsToVendor = 
+              d.userEmail?.toLowerCase().includes('lizz') || 
+              d.vendedor?.toLowerCase().includes('lizz') ||
+              d.userEmail?.toLowerCase().includes('estefania') || 
+              d.vendedor?.toLowerCase().includes('estefania');
+            return d.userId === currentUser.uid || !belongsToVendor;
+          } else if (filtroVendedor === 'lizz') {
+            return d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz');
+          } else if (filtroVendedor === 'estefania') {
+            return d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania');
+          } else {
+            return true; // 'todos'
+          }
+        };
+        ventasData = allVentas.filter(filterFn);
+        clientesData = allClientes.filter(filterFn);
+        productosData = allProductos.filter(filterFn);
       }
 
-      setVentas(vData);
-      setClientes(cData);
-      setProductos(pData);
+      // Ordenar en memoria
+      ventasData.sort((a, b) => {
+        const tA = a.fechaVenta?.toMillis ? a.fechaVenta.toMillis() : (a.fechaVenta ? new Date(a.fechaVenta).getTime() : 0);
+        const tB = b.fechaVenta?.toMillis ? b.fechaVenta.toMillis() : (b.fechaVenta ? new Date(b.fechaVenta).getTime() : 0);
+        return tB - tA;
+      });
+
+      clientesData.sort((a, b) => (a.nombreCompleto || '').localeCompare(b.nombreCompleto || ''));
+      productosData.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+
+      setVentas(ventasData);
+      setClientes(clientesData);
+      setProductos(productosData.filter(p => p.stock > 0));
     } catch (error) {
       console.error("Error cargando datos: ", error);
     }
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Calcular métricas rápidas para el vendedor
-  const totalHistorico = ventas.reduce((sum, v) => sum + Number(v.total || 0), 0);
-  const totalHoy = ventas.filter(v => {
-    if (!v.fechaVenta) return true; // Si apenas se creó localmente
-    const d = v.fechaVenta.toDate();
-    const hoy = new Date();
-    return d.getDate() === hoy.getDate() && d.getMonth() === hoy.getMonth() && d.getFullYear() === hoy.getFullYear();
-  }).reduce((sum, v) => sum + Number(v.total || 0), 0);
-
+    if (currentUser) {
+      fetchData();
+    }
+  }, [currentUser, filtroVendedor]);
   const agregarAlCarrito = () => {
     if (!selectedProduct) return;
     const prod = productos.find(p => p.id === selectedProduct);
@@ -88,16 +121,16 @@ const Ventas = () => {
       }
       setCarrito(carrito.map(item => 
         item.productoId === prod.id 
-          ? { ...item, cantidad: item.cantidad + cant, subtotal: (item.cantidad + cant) * item.precioUnitario }
+          ? { ...item, cantidad: item.cantidad + cant, subtotal: (item.cantidad + cant) * item.valorVenta }
           : item
       ));
     } else {
       setCarrito([...carrito, {
         productoId: prod.id,
         nombre: prod.nombre,
-        precioUnitario: prod.precio,
+        precioUnitario: prod.valorVenta,
         cantidad: cant,
-        subtotal: cant * prod.precio
+        subtotal: cant * prod.valorVenta
       }]);
     }
     
@@ -114,6 +147,7 @@ const Ventas = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!currentUser) return;
     if (!clienteId) return alert("Selecciona un cliente");
     if (carrito.length === 0) return alert("Agrega al menos un producto");
     
@@ -129,34 +163,15 @@ const Ventas = () => {
         total: totalCarrito,
         detalles: carrito,
         tipoVenta,
-        vendedor: currentUser?.email || 'admin'
+        userId: currentUser.uid,
+        userEmail: currentUser.email
       });
 
       // 1.5 Si es financiada, crear préstamo
       if (tipoVenta === 'financiada') {
         const montoP = totalCarrito;
         const tasaI = Number(tasaInteres);
-        const numeroCuotasNum = Number(numeroCuotas);
         const totalConInteres = montoP + (montoP * (tasaI / 100));
-
-        // Generar Cuotas
-        const cuotasList = [];
-        const montoCuota = totalConInteres / numeroCuotasNum;
-        let currentFecha = new Date();
-        for (let i = 1; i <= numeroCuotasNum; i++) {
-          if (frecuenciaCobro === 'diario') currentFecha.setDate(currentFecha.getDate() + 1);
-          else if (frecuenciaCobro === 'semanal') currentFecha.setDate(currentFecha.getDate() + 7);
-          else if (frecuenciaCobro === 'quincenal') currentFecha.setDate(currentFecha.getDate() + 15);
-          else if (frecuenciaCobro === 'mensual') currentFecha.setMonth(currentFecha.getMonth() + 1);
-          
-          cuotasList.push({
-            numero: i,
-            monto: montoCuota,
-            saldo: montoCuota,
-            fechaVencimiento: new Date(currentFecha.getTime()),
-            estado: 'pendiente'
-          });
-        }
 
         await addDoc(collection(db, 'prestamos'), {
           clienteId,
@@ -165,15 +180,14 @@ const Ventas = () => {
           telefono: cliente.telefono,
           montoPrincipal: montoP,
           tasaInteres: tasaI,
-          numeroCuotas: numeroCuotasNum,
-          cuotas: cuotasList,
           frecuenciaCobro,
           fechaInicio: serverTimestamp(),
           estado: 'activo',
           saldoPendiente: totalConInteres,
           totalInicial: totalConInteres,
           ventaId: ventaRef.id,
-          vendedor: currentUser?.email || 'admin'
+          userId: currentUser.uid,
+          userEmail: currentUser.email
         });
       }
 
@@ -192,7 +206,6 @@ const Ventas = () => {
       setTipoVenta('contado');
       setTasaInteres('');
       setFrecuenciaCobro('mensual');
-      setNumeroCuotas('');
       setShowForm(false);
       fetchData();
       alert('Venta procesada con éxito');
@@ -204,39 +217,38 @@ const Ventas = () => {
     }
   };
 
+  const emailLower = currentUser?.email?.toLowerCase() || '';
+  const isLizz = emailLower.includes('lizz');
+  const isEstefania = emailLower.includes('estefania');
+  const isVendor = isLizz || isEstefania;
+
   return (
     <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold text-slate-100">Caja y Ventas</h2>
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-100">Caja y Ventas</h2>
+          {!isVendor && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-slate-400 text-sm">Ver registros de:</span>
+              <select 
+                value={filtroVendedor} 
+                onChange={(e) => setFiltroVendedor(e.target.value)} 
+                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+              >
+                <option value="mio">Mis Ventas/Caja (Mío)</option>
+                <option value="lizz">Lizz</option>
+                <option value="estefania">Estefanía</option>
+                <option value="todos">Todos</option>
+              </select>
+            </div>
+          )}
+        </div>
         <button 
           onClick={() => setShowForm(!showForm)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors self-start sm:self-auto"
         >
           {showForm ? 'Cancelar' : 'Nueva Venta'}
         </button>
-      </div>
-
-      {/* Tarjetas de Métricas Rápidas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="glass-panel p-6 rounded-xl flex items-center gap-4 border border-indigo-500/20 shadow-[0_0_15px_rgba(79,70,229,0.1)]">
-          <div className="p-4 bg-indigo-500/20 rounded-lg text-indigo-400">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-          </div>
-          <div>
-            <p className="text-sm text-slate-400 font-medium">Tus Ventas de Hoy</p>
-            <p className="text-3xl font-bold text-emerald-400">${totalHoy.toLocaleString()}</p>
-          </div>
-        </div>
-
-        <div className="glass-panel p-6 rounded-xl flex items-center gap-4 border border-indigo-500/10">
-          <div className="p-4 bg-slate-800 rounded-lg text-slate-300">
-            <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-          </div>
-          <div>
-            <p className="text-sm text-slate-400 font-medium">Recaudo Histórico (Tu cuenta)</p>
-            <p className="text-2xl font-bold text-slate-200">${totalHistorico.toLocaleString()}</p>
-          </div>
-        </div>
       </div>
 
       {showForm && (
@@ -260,7 +272,7 @@ const Ventas = () => {
               </select>
               
               {tipoVenta === 'financiada' && (
-                <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-1">Interés (%)</label>
                     <input required type="number" min="0" value={tasaInteres} onChange={(e) => setTasaInteres(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none" />
@@ -274,10 +286,6 @@ const Ventas = () => {
                       <option value="mensual">Mensual</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">N° Cuotas</label>
-                    <input required type="number" min="1" value={numeroCuotas} onChange={(e) => setNumeroCuotas(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none" />
-                  </div>
                 </div>
               )}
             </div>
@@ -287,7 +295,7 @@ const Ventas = () => {
               <div className="flex gap-2">
                 <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="flex-1 border border-transparent rounded-lg p-2.5 outline-none glass-panel">
                   <option value="">-- Buscar Producto --</option>
-                  {productos.map(p => <option key={p.id} value={p.id}>{p.nombre} (${p.precio} - Stock: {p.stock})</option>)}
+                  {productos.map(p => <option key={p.id} value={p.id}>{p.nombre} (${p.valorVenta} - Stock: {p.stock})</option>)}
                 </select>
                 <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-20 border border-transparent rounded-lg p-2.5 outline-none text-center" />
                 <button type="button" onClick={agregarAlCarrito} className="bg-gray-800 text-white p-2.5 rounded-lg hover:bg-gray-900"><Plus size={20}/></button>

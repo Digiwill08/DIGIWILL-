@@ -1,228 +1,179 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Wallet, Package, TrendingUp } from 'lucide-react';
-
-// Helper to prevent hanging getDocs
-const getDocsFast = (queryRef) => {
-  return new Promise((resolve, reject) => {
-    const unsubscribe = onSnapshot(
-      queryRef,
-      (snapshot) => {
-        resolve(snapshot);
-        unsubscribe();
-      },
-      (error) => {
-        reject(error);
-      }
-    );
-  });
-};
+import { useAuth } from '../context/AuthContext';
 
 const Dashboard = () => {
+  const { currentUser } = useAuth();
   const [metricas, setMetricas] = useState({
     prestamosActivos: 0,
     saldoPendienteTotal: 0,
-    capitalPrestado: 0,
-    interesEsperado: 0,
     productosTotal: 0,
     valorInventario: 0,
-    ventasTotal: 0,
-    recaudoHoy: 0
+    ventasTotal: 0
   });
   const [loading, setLoading] = useState(true);
-  const [loadingStep, setLoadingStep] = useState("Iniciando...");
-  const [errorDetails, setErrorDetails] = useState("");
+  const [filtroVendedor, setFiltroVendedor] = useState('mio');
 
   useEffect(() => {
     const fetchMetricas = async () => {
+      if (!currentUser) return;
       try {
-        setLoadingStep("Obteniendo préstamos (1/4)...");
-        const snapPrestamos = await getDocsFast(collection(db, 'prestamos'));
+        const emailLower = currentUser.email?.toLowerCase() || '';
+        const isLizz = emailLower.includes('lizz');
+        const isEstefania = emailLower.includes('estefania');
+        const isVendor = isLizz || isEstefania;
+        
         let prestamosCount = 0;
         let saldoTotal = 0;
-        let capitalTotal = 0;
+        let productosCount = 0;
+        let valorInv = 0;
+        let ventasTotal = 0;
+
+        const snapPrestamos = await getDocs(query(collection(db, 'prestamos'), where('estado', '==', 'activo')));
+        const snapProductos = await getDocs(collection(db, 'productos'));
+        const snapVentas = await getDocs(collection(db, 'ventas'));
+
+        const filterFn = d => {
+          if (isVendor) {
+            const isOwner = d.userId === currentUser.uid;
+            const matchesEmail = isLizz 
+              ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+              : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
+            return isOwner || matchesEmail;
+          } else {
+            if (filtroVendedor === 'mio') {
+              const belongsToVendor = 
+                d.userEmail?.toLowerCase().includes('lizz') || 
+                d.vendedor?.toLowerCase().includes('lizz') ||
+                d.userEmail?.toLowerCase().includes('estefania') || 
+                d.vendedor?.toLowerCase().includes('estefania');
+              return d.userId === currentUser.uid || !belongsToVendor;
+            } else if (filtroVendedor === 'lizz') {
+              return d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz');
+            } else if (filtroVendedor === 'estefania') {
+              return d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania');
+            } else {
+              return true; // 'todos'
+            }
+          }
+        };
+
+        // 1. Préstamos
         snapPrestamos.forEach(doc => {
           const data = doc.data();
-          if (data.estado === 'activo') {
+          if (filterFn(data)) {
             prestamosCount++;
             saldoTotal += Number(data.saldoPendiente || 0);
-            
-            // Estimar capital e interés restante
-            const totalInic = Number(data.totalInicial || data.montoPrincipal || 1);
-            const capInic = Number(data.montoPrincipal || 0);
-            const proporcionCapital = capInic / totalInic;
-            
-            capitalTotal += Number(data.saldoPendiente || 0) * proporcionCapital;
           }
         });
 
-        const interesTotal = saldoTotal - capitalTotal;
-
-        setLoadingStep("Obteniendo inventario (2/4)...");
-        const snapProductos = await getDocsFast(collection(db, 'productos'));
-        let productosCount = 0;
-        let valorInv = 0;
+        // 2. Inventario
         snapProductos.forEach(doc => {
-          productosCount++;
           const data = doc.data();
-          valorInv += Number(data.stock || 0) * Number(data.costo || data.precio || 0);
+          if (filterFn(data)) {
+            productosCount++;
+            valorInv += Number(data.stock || 0) * Number(data.valorCompra || data.valorVenta || 0);
+          }
         });
 
-        setLoadingStep("Obteniendo ventas (3/4)...");
-        const snapVentas = await getDocsFast(collection(db, 'ventas'));
-        let ventasTotal = 0;
+        // 3. Ventas
         snapVentas.forEach(doc => {
-          ventasTotal += Number(doc.data().total || 0);
-        });
-
-        setLoadingStep("Obteniendo recaudo hoy (4/4)...");
-        const snapPagos = await getDocsFast(collection(db, 'pagos'));
-        let recaudoHoyTotal = 0;
-        const hoy = new Date();
-        hoy.setHours(0,0,0,0);
-        
-        snapPagos.forEach(doc => {
           const data = doc.data();
-          if (data.fechaPago) {
-            let fechaPago = null;
-            if (typeof data.fechaPago.toDate === 'function') {
-              fechaPago = data.fechaPago.toDate();
-            } else if (data.fechaPago.seconds) {
-              fechaPago = new Date(data.fechaPago.seconds * 1000);
-            } else {
-              fechaPago = new Date(data.fechaPago);
-            }
-            
-            if (fechaPago && fechaPago >= hoy) {
-              recaudoHoyTotal += Number(data.montoAbonado || 0);
-            }
+          if (filterFn(data)) {
+            ventasTotal += Number(data.total || 0);
           }
         });
 
         setMetricas({
           prestamosActivos: prestamosCount,
           saldoPendienteTotal: saldoTotal,
-          capitalPrestado: capitalTotal,
-          interesEsperado: interesTotal,
           productosTotal: productosCount,
           valorInventario: valorInv,
-          ventasTotal: ventasTotal,
-          recaudoHoy: recaudoHoyTotal
+          ventasTotal: ventasTotal
         });
       } catch (error) {
         console.error("Error obteniendo métricas: ", error);
-        setErrorDetails(error.message || String(error));
       } finally {
         setLoading(false);
       }
     };
 
-    fetchMetricas();
-  }, []);
+    if (currentUser) {
+      fetchMetricas();
+    }
+  }, [currentUser, filtroVendedor]);
 
   if (loading) {
-    return (
-      <div className="p-8 flex flex-col items-center justify-center text-slate-400 gap-4">
-        <div className="text-xl font-semibold">Cargando métricas...</div>
-        <div className="text-indigo-400">{loadingStep}</div>
-        {errorDetails && <div className="text-red-500 text-sm">{errorDetails}</div>}
-      </div>
-    );
+    return <div className="p-8 flex items-center justify-center text-slate-500">Cargando métricas...</div>;
   }
 
-  if (errorDetails) {
-    return (
-      <div className="p-8 flex flex-col items-center justify-center text-red-400 gap-4">
-        <div className="text-xl font-semibold">Error al cargar métricas</div>
-        <div className="text-sm">{errorDetails}</div>
-      </div>
-    );
-  }
+  const emailLower = currentUser?.email?.toLowerCase() || '';
+  const isLizz = emailLower.includes('lizz');
+  const isEstefania = emailLower.includes('estefania');
+  const isVendor = isLizz || isEstefania;
 
   return (
     <div className="p-8">
-      <h2 className="text-3xl font-bold text-slate-100 mb-6 neon-text flex items-center gap-2">Panel General (Dashboard)</h2>
-      
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-100 neon-text flex items-center gap-2">Panel General (Dashboard)</h2>
+          {!isVendor && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-slate-400 text-sm">Ver métricas de:</span>
+              <select 
+                value={filtroVendedor} 
+                onChange={(e) => setFiltroVendedor(e.target.value)} 
+                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+              >
+                <option value="mio">Mis Métricas (Mío)</option>
+                <option value="lizz">Lizz</option>
+                <option value="estefania">Estefanía</option>
+                <option value="todos">Todos</option>
+              </select>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
-        {/* Fila 1: Métricas Financieras Principales */}
-        <h3 className="text-xl font-semibold text-slate-300 mt-2 border-b border-slate-700/50 pb-2">Resumen Financiero Diario</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
-            <div className="p-3 bg-emerald-900/50 text-emerald-400 rounded-lg neon-border shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-              <TrendingUp size={28} />
-            </div>
-            <div>
-              <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider">Recaudo de Hoy</h3>
-              <p className="text-4xl font-bold text-emerald-400 mt-2 neon-text-emerald">${metricas.recaudoHoy.toLocaleString()}</p>
-              <p className="text-xs text-slate-500 mt-1">Ingresos por abonos</p>
-            </div>
+        {/* Card: Préstamos */}
+        <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
+          <div className="p-3 bg-indigo-900/50 text-indigo-400 rounded-lg neon-border">
+            <Wallet size={24} />
           </div>
-
-          <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
-            <div className="p-3 bg-indigo-900/50 text-indigo-400 rounded-lg shadow-[0_0_10px_rgba(99,102,241,0.2)]">
-              <Wallet size={28} />
-            </div>
-            <div>
-              <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider">Capital Vivo</h3>
-              <p className="text-3xl font-bold text-slate-200 mt-2">${Math.round(metricas.capitalPrestado).toLocaleString()}</p>
-              <p className="text-xs text-slate-500 mt-1">Dinero real en la calle</p>
-            </div>
+          <div>
+            <h3 className="text-slate-400 text-sm font-medium">Préstamos Activos ({metricas.prestamosActivos})</h3>
+            <p className="text-3xl font-bold text-indigo-300 mt-1 neon-text">${metricas.saldoPendienteTotal.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">Saldo pendiente en la calle</p>
           </div>
-
-          <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
-            <div className="p-3 bg-orange-900/50 text-orange-400 rounded-lg shadow-[0_0_10px_rgba(249,115,22,0.2)]">
-              <TrendingUp size={28} />
-            </div>
-            <div>
-              <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider">Interés Esperado</h3>
-              <p className="text-3xl font-bold text-orange-400 mt-2">+${Math.round(metricas.interesEsperado).toLocaleString()}</p>
-              <p className="text-xs text-slate-500 mt-1">Ganancia proyectada</p>
-            </div>
-          </div>
-
         </div>
 
-        {/* Fila 2: Estadísticas Generales */}
-        <h3 className="text-xl font-semibold text-slate-300 mt-4 border-b border-slate-700/50 pb-2">Estadísticas del Negocio</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          
-          <div className="glass-panel p-6 rounded-xl flex items-start gap-4 opacity-90">
-            <div className="p-2 bg-slate-800 text-slate-300 rounded-lg">
-              <Wallet size={20} />
-            </div>
-            <div>
-              <h3 className="text-slate-400 text-sm font-medium">Deuda Total Activa</h3>
-              <p className="text-2xl font-bold text-slate-200 mt-1">${metricas.saldoPendienteTotal.toLocaleString()}</p>
-              <p className="text-xs text-slate-500">{metricas.prestamosActivos} préstamos vigentes</p>
-            </div>
+        {/* Card: Inventario */}
+        <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
+          <div className="p-3 bg-emerald-900/50 text-emerald-400 rounded-lg border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+            <Package size={24} />
           </div>
-
-          <div className="glass-panel p-6 rounded-xl flex items-start gap-4 opacity-90">
-            <div className="p-2 bg-slate-800 text-slate-300 rounded-lg">
-              <Package size={20} />
-            </div>
-            <div>
-              <h3 className="text-slate-400 text-sm font-medium">Inventario</h3>
-              <p className="text-2xl font-bold text-slate-200 mt-1">${metricas.valorInventario.toLocaleString()}</p>
-              <p className="text-xs text-slate-500">{metricas.productosTotal} referencias en stock</p>
-            </div>
+          <div>
+            <h3 className="text-slate-400 text-sm font-medium">Productos en Stock ({metricas.productosTotal})</h3>
+            <p className="text-3xl font-bold text-emerald-300 mt-1 neon-text-emerald">${metricas.valorInventario.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">Valor estimado del inventario</p>
           </div>
-
-          <div className="glass-panel p-6 rounded-xl flex items-start gap-4 opacity-90">
-            <div className="p-2 bg-slate-800 text-slate-300 rounded-lg">
-              <TrendingUp size={20} />
-            </div>
-            <div>
-              <h3 className="text-slate-400 text-sm font-medium">Ventas Totales</h3>
-              <p className="text-2xl font-bold text-slate-200 mt-1">${metricas.ventasTotal.toLocaleString()}</p>
-              <p className="text-xs text-slate-500">Histórico de facturación</p>
-            </div>
-          </div>
-
         </div>
+
+        {/* Card: Ventas */}
+        <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
+          <div className="p-3 bg-blue-900/50 text-blue-400 rounded-lg border border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.3)]">
+            <TrendingUp size={24} />
+          </div>
+          <div>
+            <h3 className="text-slate-400 text-sm font-medium">Ingresos por Ventas</h3>
+            <p className="text-3xl font-bold text-blue-300 mt-1 text-shadow-[0_0_10px_rgba(59,130,246,0.8)]">${metricas.ventasTotal.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">Total histórico</p>
+          </div>
+        </div>
+
       </div>
     </div>
   );
