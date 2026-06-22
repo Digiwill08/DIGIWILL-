@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth } from '../context/AuthContext';const Productos = () => {
+import { useAuth } from '../context/AuthContext';
+
+const Productos = () => {
   const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [productos, setProductos] = useState([]);
-  const [filtroVendedor, setFiltroVendedor] = useState('mio');
+  const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
+  const [editingProduct, setEditingProduct] = useState(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -20,7 +23,7 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
     if (!currentUser) return;
     try {
       const emailLower = currentUser.email?.toLowerCase() || '';
-      const isLizz = emailLower.includes('lizz');
+      const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
       const isEstefania = emailLower.includes('estefania');
       const isVendor = isLizz || isEstefania;
 
@@ -31,36 +34,37 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
       if (isVendor) {
         // Vendedoras: solo ven sus propios productos (nuevos o heredados)
         data = allData.filter(d => {
-          const isOwner = d.userId === currentUser.uid;
+          const isOwner = d.created_by === currentUser.uid || d.userId === currentUser.uid;
           const matchesEmail = isLizz 
-            ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+            ? (d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1'))
             : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
           return isOwner || matchesEmail;
         });
       } else {
-        // Administrador: filtrar según el selector
-        if (filtroVendedor === 'mio') {
+        // Administrador: filtrar según la selección de pestaña
+        if (activeTab === 'mio') {
           data = allData.filter(d => {
             const belongsToVendor = 
               d.userEmail?.toLowerCase().includes('lizz') || 
+              d.userEmail?.toLowerCase().includes('vendedor1') ||
               d.vendedor?.toLowerCase().includes('lizz') ||
+              d.vendedor?.toLowerCase().includes('vendedor1') ||
               d.userEmail?.toLowerCase().includes('estefania') || 
               d.vendedor?.toLowerCase().includes('estefania');
-            return d.userId === currentUser.uid || !belongsToVendor;
+            return d.created_by === currentUser.uid || d.userId === currentUser.uid || !belongsToVendor;
           });
-        } else if (filtroVendedor === 'lizz') {
+        } else if (activeTab === 'lizz') {
           data = allData.filter(d => 
             d.userEmail?.toLowerCase().includes('lizz') || 
-            d.vendedor?.toLowerCase().includes('lizz')
+            d.userEmail?.toLowerCase().includes('vendedor1') ||
+            d.vendedor?.toLowerCase().includes('lizz') ||
+            d.vendedor?.toLowerCase().includes('vendedor1')
           );
-        } else if (filtroVendedor === 'estefania') {
+        } else if (activeTab === 'estefania') {
           data = allData.filter(d => 
             d.userEmail?.toLowerCase().includes('estefania') || 
             d.vendedor?.toLowerCase().includes('estefania')
           );
-        } else {
-          // 'todos'
-          data = allData;
         }
       }
 
@@ -81,7 +85,8 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
     if (currentUser) {
       fetchProductos();
     }
-  }, [currentUser, filtroVendedor]);
+  }, [currentUser, activeTab]);
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -98,8 +103,9 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
         valorVenta: Number(formData.valorVenta),
         stock: Number(formData.stock),
         fechaCreacion: serverTimestamp(),
-        userId: currentUser.uid,
-        userEmail: currentUser.email,
+        created_by: currentUser.uid, // Campo de auditoría obligatorio
+        userId: currentUser.uid,      // Compatibilidad legacy
+        userEmail: currentUser.email,  // Compatibilidad legacy
       });
       
       setFormData({ nombre: '', valorCompra: '', valorVenta: '', stock: '' });
@@ -108,14 +114,49 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
       alert('Producto registrado con éxito!');
     } catch (error) {
       console.error("Error al guardar: ", error);
-      alert('Hubo un error al guardar. Revisa la consola.');
+      alert('Hubo un error al guardar. Revisa la consola o las reglas de base de datos.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    setLoading(true);
+    try {
+      const ref = doc(db, 'productos', editingProduct.id);
+      await updateDoc(ref, {
+        nombre: editingProduct.nombre,
+        valorCompra: Number(editingProduct.valorCompra),
+        valorVenta: Number(editingProduct.valorVenta),
+        stock: Number(editingProduct.stock)
+      });
+      setEditingProduct(null);
+      fetchProductos();
+      alert('Producto actualizado con éxito!');
+    } catch (error) {
+      console.error("Error al actualizar: ", error);
+      alert('Error al actualizar el producto.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEliminar = async (id) => {
+    if (!window.confirm("¿Estás seguro de que deseas eliminar este producto?")) return;
+    try {
+      await deleteDoc(doc(db, 'productos', id));
+      fetchProductos();
+      alert('Producto eliminado con éxito.');
+    } catch (error) {
+      console.error("Error al eliminar: ", error);
+      alert('Error al eliminar el producto. Revisa los permisos.');
+    }
+  };
+
   const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('lizz');
+  const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
   const isVendor = isLizz || isEstefania;
 
@@ -125,18 +166,25 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
         <div>
           <h2 className="text-3xl font-bold text-slate-100">Inventario y Productos</h2>
           {!isVendor && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-slate-400 text-sm">Ver registros de:</span>
-              <select 
-                value={filtroVendedor} 
-                onChange={(e) => setFiltroVendedor(e.target.value)} 
-                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+            <div className="flex border-b border-indigo-900/50 mt-4 gap-2">
+              <button
+                onClick={() => setActiveTab('mio')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'mio' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
               >
-                <option value="mio">Mis Productos (Mío)</option>
-                <option value="lizz">Lizz</option>
-                <option value="estefania">Estefanía</option>
-                <option value="todos">Todos</option>
-              </select>
+                Mi Inventario
+              </button>
+              <button
+                onClick={() => setActiveTab('lizz')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'lizz' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Gestión Liz
+              </button>
+              <button
+                onClick={() => setActiveTab('estefania')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'estefania' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Gestión Estefanía
+              </button>
             </div>
           )}
         </div>
@@ -149,8 +197,8 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
       </div>
 
       {showForm && (
-        <div className="glass-panel p-6 rounded-xl  border border-none mb-8">
-          <h3 className="text-xl font-semibold mb-4">Registro de Nuevo Producto</h3>
+        <div className="glass-panel p-6 rounded-xl border border-none mb-8">
+          <h3 className="text-xl font-semibold mb-4 text-slate-200">Registro de Nuevo Producto</h3>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-3">
@@ -179,7 +227,7 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
         </div>
       )}
 
-      <div className="glass-panel rounded-xl  border border-none overflow-hidden">
+      <div className="glass-panel rounded-xl border border-none overflow-hidden overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-transparent border-b border-none">
@@ -187,12 +235,13 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
               <th className="p-4 text-sm font-semibold text-slate-400">Costo Compra</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Precio Venta</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Stock</th>
+              <th className="p-4 text-sm font-semibold text-slate-400">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {productos.length === 0 ? (
               <tr>
-                <td colSpan="4" className="p-8 text-center text-slate-500">No hay productos registrados</td>
+                <td colSpan="5" className="p-8 text-center text-slate-500">No hay productos registrados</td>
               </tr>
             ) : (
               productos.map(p => (
@@ -203,12 +252,95 @@ import { useAuth } from '../context/AuthContext';const Productos = () => {
                   <td className="p-4 text-slate-400">
                     <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-semibold">{p.stock}</span>
                   </td>
+                  <td className="p-4 flex gap-2">
+                    <button
+                      onClick={() => setEditingProduct(p)}
+                      className="px-3 py-1 bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-semibold hover:bg-indigo-600/50 transition-colors"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleEliminar(p.id)}
+                      className="px-3 py-1 bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold hover:bg-rose-600/50 transition-colors"
+                    >
+                      Eliminar
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Modal de Edición de Producto */}
+      {editingProduct && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="glass-panel p-6 rounded-xl shadow-lg max-w-md w-full border border-indigo-500/50 relative">
+            <h3 className="text-xl font-bold mb-4 text-slate-100 neon-text">Editar Producto</h3>
+            <form onSubmit={handleUpdate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Nombre</label>
+                <input
+                  required
+                  type="text"
+                  value={editingProduct.nombre}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, nombre: e.target.value })}
+                  className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Costo Compra</label>
+                  <input
+                    required
+                    type="number"
+                    value={editingProduct.valorCompra}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, valorCompra: e.target.value })}
+                    className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Precio Venta</label>
+                  <input
+                    required
+                    type="number"
+                    value={editingProduct.valorVenta}
+                    onChange={(e) => setEditingProduct({ ...editingProduct, valorVenta: e.target.value })}
+                    className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Stock</label>
+                <input
+                  required
+                  type="number"
+                  value={editingProduct.stock}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, stock: e.target.value })}
+                  className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingProduct(null)}
+                  className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-lg font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 neon-button text-white rounded-lg font-medium"
+                >
+                  {loading ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

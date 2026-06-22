@@ -10,26 +10,45 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // ==========================================
-    // DATOS OPERATIVOS (Acceso para todo el personal)
-    // ==========================================
-    // Todos los empleados que inicien sesión pueden interactuar con 
-    // las ventas, el inventario, los préstamos y la base de clientes.
-    // (La separación visual de Lizz y Estefania se maneja en la app)
+    function isOwner(resource) {
+      return isAuthenticated() && (
+        (resource.data.created_by == request.auth.uid) ||
+        (resource.data.userId == request.auth.uid) ||
+        (request.auth.token.email != null && (
+          (resource.data.userEmail != null && resource.data.userEmail.lower() == request.auth.token.email.lower()) ||
+          (resource.data.vendedor != null && resource.data.vendedor.lower() == request.auth.token.email.lower())
+        ))
+      );
+    }
+
+    function isCreatingWithOwnUid() {
+      return isAuthenticated() && request.resource.data.created_by == request.auth.uid;
+    }
+
+    // Reglas de colecciones con multi-tenancy y bypass del administrador
     match /clientes/{document=**} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if isAdmin() || isOwner(resource);
+      allow create: if isAdmin() || isCreatingWithOwnUid();
     }
+    
     match /productos/{document=**} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if isAdmin() || isOwner(resource);
+      allow create: if isAdmin() || isCreatingWithOwnUid();
     }
+    
     match /ventas/{document=**} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if isAdmin() || isOwner(resource);
+      allow create: if isAdmin() || isCreatingWithOwnUid();
     }
+    
     match /prestamos/{document=**} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if isAdmin() || isOwner(resource);
+      allow create: if isAdmin() || isCreatingWithOwnUid();
     }
+    
     match /pagos/{document=**} {
-      allow read, write: if isAuthenticated();
+      allow read, update, delete: if isAdmin() || isOwner(resource);
+      allow create: if isAdmin() || isCreatingWithOwnUid();
     }
     
     // ==========================================
@@ -37,6 +56,11 @@ service cloud.firestore {
     // ==========================================
     match /caja/{document=**} {
       allow read, write: if isAdmin();
+    }
+    
+    // Bloqueo general por defecto
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

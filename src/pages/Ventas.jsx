@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Trash2, Plus } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';const Ventas = () => {
+import { useAuth } from '../context/AuthContext';
+
+const Ventas = () => {
   const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [filtroVendedor, setFiltroVendedor] = useState('mio');
+  const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
   
   // Datos
   const [ventas, setVentas] = useState([]);
@@ -30,7 +32,7 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
     if (!currentUser) return;
     try {
       const emailLower = currentUser.email?.toLowerCase() || '';
-      const isLizz = emailLower.includes('lizz');
+      const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
       const isEstefania = emailLower.includes('estefania');
       const isVendor = isLizz || isEstefania;
 
@@ -48,11 +50,11 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
       let productosData = [];
 
       if (isVendor) {
-        // Vendedoras: filtrar por su propio userId, userEmail o vendedor
+        // Vendedoras: filtrar por su propio created_by, userId, userEmail o vendedor
         const filterFn = d => {
-          const isOwner = d.userId === currentUser.uid;
+          const isOwner = d.created_by === currentUser.uid || d.userId === currentUser.uid;
           const matchesEmail = isLizz 
-            ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+            ? (d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1'))
             : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
           return isOwner || matchesEmail;
         };
@@ -60,22 +62,23 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
         clientesData = allClientes.filter(filterFn);
         productosData = allProductos.filter(filterFn);
       } else {
-        // Administrador: filtrar según la selección
+        // Administrador: filtrar según la selección de pestaña
         const filterFn = d => {
-          if (filtroVendedor === 'mio') {
+          if (activeTab === 'mio') {
             const belongsToVendor = 
               d.userEmail?.toLowerCase().includes('lizz') || 
+              d.userEmail?.toLowerCase().includes('vendedor1') ||
               d.vendedor?.toLowerCase().includes('lizz') ||
+              d.vendedor?.toLowerCase().includes('vendedor1') ||
               d.userEmail?.toLowerCase().includes('estefania') || 
               d.vendedor?.toLowerCase().includes('estefania');
-            return d.userId === currentUser.uid || !belongsToVendor;
-          } else if (filtroVendedor === 'lizz') {
-            return d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz');
-          } else if (filtroVendedor === 'estefania') {
+            return d.created_by === currentUser.uid || d.userId === currentUser.uid || !belongsToVendor;
+          } else if (activeTab === 'lizz') {
+            return d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1');
+          } else if (activeTab === 'estefania') {
             return d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania');
-          } else {
-            return true; // 'todos'
           }
+          return false;
         };
         ventasData = allVentas.filter(filterFn);
         clientesData = allClientes.filter(filterFn);
@@ -104,7 +107,8 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
     if (currentUser) {
       fetchData();
     }
-  }, [currentUser, filtroVendedor]);
+  }, [currentUser, activeTab]);
+
   const agregarAlCarrito = () => {
     if (!selectedProduct) return;
     const prod = productos.find(p => p.id === selectedProduct);
@@ -163,8 +167,9 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
         total: totalCarrito,
         detalles: carrito,
         tipoVenta,
-        userId: currentUser.uid,
-        userEmail: currentUser.email
+        created_by: currentUser.uid, // Campo de auditoría
+        userId: currentUser.uid,      // Legacy
+        userEmail: currentUser.email   // Legacy
       });
 
       // 1.5 Si es financiada, crear préstamo
@@ -186,8 +191,9 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
           saldoPendiente: totalConInteres,
           totalInicial: totalConInteres,
           ventaId: ventaRef.id,
-          userId: currentUser.uid,
-          userEmail: currentUser.email
+          created_by: currentUser.uid, // Campo de auditoría
+          userId: currentUser.uid,      // Legacy
+          userEmail: currentUser.email   // Legacy
         });
       }
 
@@ -211,14 +217,14 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
       alert('Venta procesada con éxito');
     } catch (error) {
       console.error("Error al guardar venta: ", error);
-      alert('Error al procesar la venta');
+      alert('Error al procesar la venta. Revisa las reglas o permisos.');
     } finally {
       setLoading(false);
     }
   };
 
   const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('lizz');
+  const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
   const isVendor = isLizz || isEstefania;
 
@@ -228,18 +234,25 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
         <div>
           <h2 className="text-3xl font-bold text-slate-100">Caja y Ventas</h2>
           {!isVendor && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-slate-400 text-sm">Ver registros de:</span>
-              <select 
-                value={filtroVendedor} 
-                onChange={(e) => setFiltroVendedor(e.target.value)} 
-                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+            <div className="flex border-b border-indigo-900/50 mt-4 gap-2">
+              <button
+                onClick={() => setActiveTab('mio')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'mio' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
               >
-                <option value="mio">Mis Ventas/Caja (Mío)</option>
-                <option value="lizz">Lizz</option>
-                <option value="estefania">Estefanía</option>
-                <option value="todos">Todos</option>
-              </select>
+                Mis Ventas
+              </button>
+              <button
+                onClick={() => setActiveTab('lizz')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'lizz' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Gestión Liz
+              </button>
+              <button
+                onClick={() => setActiveTab('estefania')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'estefania' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Gestión Estefanía
+              </button>
             </div>
           )}
         </div>
@@ -252,7 +265,7 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
       </div>
 
       {showForm && (
-        <div className="glass-panel p-6 rounded-xl  border border-none mb-8 flex flex-col md:flex-row gap-6">
+        <div className="glass-panel p-6 rounded-xl border border-none mb-8 flex flex-col md:flex-row gap-6">
           {/* Formulario / Selector */}
           <div className="flex-1 space-y-4">
             <h3 className="text-xl font-semibold border-b pb-2">Detalles de Facturación</h3>
@@ -309,7 +322,7 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
             <div className="flex-1 overflow-y-auto max-h-48 space-y-2 mb-4">
               {carrito.length === 0 ? <p className="text-sm text-slate-600 text-center">Carrito vacío</p> : 
                 carrito.map(item => (
-                  <div key={item.productoId} className="flex justify-between items-center glass-panel p-2 rounded  text-sm">
+                  <div key={item.productoId} className="flex justify-between items-center glass-panel p-2 rounded text-sm">
                     <div>
                       <p className="font-medium">{item.nombre}</p>
                       <p className="text-slate-500">{item.cantidad} x ${item.precioUnitario}</p>
@@ -338,7 +351,7 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
       )}
 
       {/* Historial de Ventas */}
-      <div className="glass-panel rounded-xl  border border-none overflow-hidden mt-8">
+      <div className="glass-panel rounded-xl border border-none overflow-hidden mt-8 overflow-x-auto">
         <div className="p-4 border-b bg-transparent">
           <h3 className="font-bold text-slate-300">Historial de Ventas</h3>
         </div>
@@ -354,7 +367,7 @@ import { useAuth } from '../context/AuthContext';const Ventas = () => {
           </thead>
           <tbody>
             {ventas.length === 0 ? (
-              <tr><td colSpan="4" className="p-8 text-center text-slate-500">No hay ventas registradas</td></tr>
+              <tr><td colSpan="5" className="p-8 text-center text-slate-500">No hay ventas registradas</td></tr>
             ) : (
               ventas.map(v => {
                 const dateStr = v.fechaVenta ? new Date(v.fechaVenta.toDate()).toLocaleDateString() : 'Reciente';

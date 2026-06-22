@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,7 +8,8 @@ const Clientes = () => {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [clientes, setClientes] = useState([]);
-  const [filtroVendedor, setFiltroVendedor] = useState('mio');
+  const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
+  const [editingCliente, setEditingCliente] = useState(null);
 
   const [formData, setFormData] = useState({
     nombreCompleto: '',
@@ -22,7 +23,7 @@ const Clientes = () => {
     if (!currentUser) return;
     try {
       const emailLower = currentUser.email?.toLowerCase() || '';
-      const isLizz = emailLower.includes('lizz');
+      const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
       const isEstefania = emailLower.includes('estefania');
       const isVendor = isLizz || isEstefania;
 
@@ -33,36 +34,37 @@ const Clientes = () => {
       if (isVendor) {
         // Vendedoras: solo ven sus propios clientes (nuevos o heredados)
         data = allData.filter(d => {
-          const isOwner = d.userId === currentUser.uid;
+          const isOwner = d.created_by === currentUser.uid || d.userId === currentUser.uid;
           const matchesEmail = isLizz 
-            ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+            ? (d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1'))
             : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
           return isOwner || matchesEmail;
         });
       } else {
-        // Administrador: filtrar según la selección del dropdown
-        if (filtroVendedor === 'mio') {
+        // Administrador: filtrar según la selección de pestaña
+        if (activeTab === 'mio') {
           data = allData.filter(d => {
             const belongsToVendor = 
               d.userEmail?.toLowerCase().includes('lizz') || 
+              d.userEmail?.toLowerCase().includes('vendedor1') ||
               d.vendedor?.toLowerCase().includes('lizz') ||
+              d.vendedor?.toLowerCase().includes('vendedor1') ||
               d.userEmail?.toLowerCase().includes('estefania') || 
               d.vendedor?.toLowerCase().includes('estefania');
-            return d.userId === currentUser.uid || !belongsToVendor;
+            return d.created_by === currentUser.uid || d.userId === currentUser.uid || !belongsToVendor;
           });
-        } else if (filtroVendedor === 'lizz') {
+        } else if (activeTab === 'lizz') {
           data = allData.filter(d => 
             d.userEmail?.toLowerCase().includes('lizz') || 
-            d.vendedor?.toLowerCase().includes('lizz')
+            d.userEmail?.toLowerCase().includes('vendedor1') ||
+            d.vendedor?.toLowerCase().includes('lizz') ||
+            d.vendedor?.toLowerCase().includes('vendedor1')
           );
-        } else if (filtroVendedor === 'estefania') {
+        } else if (activeTab === 'estefania') {
           data = allData.filter(d => 
             d.userEmail?.toLowerCase().includes('estefania') || 
             d.vendedor?.toLowerCase().includes('estefania')
           );
-        } else {
-          // 'todos'
-          data = allData;
         }
       }
 
@@ -83,7 +85,7 @@ const Clientes = () => {
     if (currentUser) {
       fetchClientes();
     }
-  }, [currentUser, filtroVendedor]);
+  }, [currentUser, activeTab]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -102,8 +104,9 @@ const Clientes = () => {
         email: formData.email,
         direccion: formData.direccion,
         fechaRegistro: serverTimestamp(),
-        userId: currentUser.uid,
-        userEmail: currentUser.email,
+        created_by: currentUser.uid, // Campo obligatorio
+        userId: currentUser.uid,      // Legacy
+        userEmail: currentUser.email,  // Legacy
       });
       
       setFormData({ nombreCompleto: '', cedula: '', telefono: '', email: '', direccion: '' });
@@ -112,14 +115,50 @@ const Clientes = () => {
       alert('Cliente registrado con éxito!');
     } catch (error) {
       console.error("Error al guardar: ", error);
-      alert('Hubo un error al guardar. Revisa la consola.');
+      alert('Hubo un error al guardar. Revisa la consola o las reglas de base de datos.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    if (!editingCliente) return;
+    setLoading(true);
+    try {
+      const ref = doc(db, 'clientes', editingCliente.id);
+      await updateDoc(ref, {
+        nombreCompleto: editingCliente.nombreCompleto,
+        cedula: editingCliente.cedula,
+        telefono: editingCliente.telefono,
+        email: editingCliente.email,
+        direccion: editingCliente.direccion
+      });
+      setEditingCliente(null);
+      fetchClientes();
+      alert('Cliente actualizado con éxito!');
+    } catch (error) {
+      console.error("Error al actualizar: ", error);
+      alert('Error al actualizar el cliente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEliminar = async (id) => {
+    if (!window.confirm("¿Estás seguro de que deseas eliminar este cliente?")) return;
+    try {
+      await deleteDoc(doc(db, 'clientes', id));
+      fetchClientes();
+      alert('Cliente eliminado con éxito.');
+    } catch (error) {
+      console.error("Error al eliminar: ", error);
+      alert('Error al eliminar el cliente. Revisa los permisos.');
+    }
+  };
+
   const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('lizz');
+  const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
   const isVendor = isLizz || isEstefania;
 
@@ -129,18 +168,25 @@ const Clientes = () => {
         <div>
           <h2 className="text-3xl font-bold text-slate-100">Base de Clientes</h2>
           {!isVendor && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-slate-400 text-sm">Ver registros de:</span>
-              <select 
-                value={filtroVendedor} 
-                onChange={(e) => setFiltroVendedor(e.target.value)} 
-                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+            <div className="flex border-b border-indigo-900/50 mt-4 gap-2">
+              <button
+                onClick={() => setActiveTab('mio')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'mio' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
               >
-                <option value="mio">Mis Clientes (Mío)</option>
-                <option value="lizz">Lizz</option>
-                <option value="estefania">Estefanía</option>
-                <option value="todos">Todos</option>
-              </select>
+                Mis Clientes
+              </button>
+              <button
+                onClick={() => setActiveTab('lizz')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'lizz' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Gestión Liz
+              </button>
+              <button
+                onClick={() => setActiveTab('estefania')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'estefania' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Gestión Estefanía
+              </button>
             </div>
           )}
         </div>
@@ -195,12 +241,13 @@ const Clientes = () => {
               <th className="p-4 text-sm font-semibold text-slate-400">Cédula</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Contacto</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Dirección</th>
+              <th className="p-4 text-sm font-semibold text-slate-400">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {clientes.length === 0 ? (
               <tr>
-                <td colSpan="4" className="p-8 text-center text-slate-500">No hay clientes registrados</td>
+                <td colSpan="5" className="p-8 text-center text-slate-500">No hay clientes registrados</td>
               </tr>
             ) : (
               clientes.map(c => (
@@ -209,12 +256,104 @@ const Clientes = () => {
                   <td className="p-4 text-slate-400">{c.cedula}</td>
                   <td className="p-4 text-slate-400">{c.telefono} <br/><span className="text-xs text-slate-500">{c.email}</span></td>
                   <td className="p-4 text-slate-400">{c.direccion}</td>
+                  <td className="p-4 flex gap-2">
+                    <button
+                      onClick={() => setEditingCliente(c)}
+                      className="px-3 py-1 bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-semibold hover:bg-indigo-600/50 transition-colors"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleEliminar(c.id)}
+                      className="px-3 py-1 bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold hover:bg-rose-600/50 transition-colors"
+                    >
+                      Eliminar
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Modal de Edición de Cliente */}
+      {editingCliente && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="glass-panel p-6 rounded-xl shadow-lg max-w-md w-full border border-indigo-500/50 relative">
+            <h3 className="text-xl font-bold mb-4 text-slate-100 neon-text">Editar Cliente</h3>
+            <form onSubmit={handleUpdate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Nombre Completo</label>
+                <input
+                  required
+                  type="text"
+                  value={editingCliente.nombreCompleto}
+                  onChange={(e) => setEditingCliente({ ...editingCliente, nombreCompleto: e.target.value })}
+                  className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Cédula</label>
+                  <input
+                    required
+                    type="text"
+                    value={editingCliente.cedula}
+                    onChange={(e) => setEditingCliente({ ...editingCliente, cedula: e.target.value })}
+                    className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Teléfono</label>
+                  <input
+                    required
+                    type="text"
+                    value={editingCliente.telefono}
+                    onChange={(e) => setEditingCliente({ ...editingCliente, telefono: e.target.value })}
+                    className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Correo Electrónico (Opcional)</label>
+                <input
+                  type="email"
+                  value={editingCliente.email || ''}
+                  onChange={(e) => setEditingCliente({ ...editingCliente, email: e.target.value })}
+                  className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Dirección</label>
+                <input
+                  required
+                  type="text"
+                  value={editingCliente.direccion}
+                  onChange={(e) => setEditingCliente({ ...editingCliente, direccion: e.target.value })}
+                  className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingCliente(null)}
+                  className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-lg font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 neon-button text-white rounded-lg font-medium"
+                >
+                  {loading ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

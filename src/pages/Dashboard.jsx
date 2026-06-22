@@ -14,14 +14,14 @@ const Dashboard = () => {
     ventasTotal: 0
   });
   const [loading, setLoading] = useState(true);
-  const [filtroVendedor, setFiltroVendedor] = useState('mio');
+  const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
 
   useEffect(() => {
     const fetchMetricas = async () => {
       if (!currentUser) return;
       try {
         const emailLower = currentUser.email?.toLowerCase() || '';
-        const isLizz = emailLower.includes('lizz');
+        const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
         const isEstefania = emailLower.includes('estefania');
         const isVendor = isLizz || isEstefania;
         
@@ -37,27 +37,28 @@ const Dashboard = () => {
 
         const filterFn = d => {
           if (isVendor) {
-            const isOwner = d.userId === currentUser.uid;
+            const isOwner = d.created_by === currentUser.uid || d.userId === currentUser.uid;
             const matchesEmail = isLizz 
-              ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+              ? (d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1'))
               : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
             return isOwner || matchesEmail;
           } else {
-            if (filtroVendedor === 'mio') {
+            if (activeTab === 'mio') {
               const belongsToVendor = 
                 d.userEmail?.toLowerCase().includes('lizz') || 
+                d.userEmail?.toLowerCase().includes('vendedor1') ||
                 d.vendedor?.toLowerCase().includes('lizz') ||
+                d.vendedor?.toLowerCase().includes('vendedor1') ||
                 d.userEmail?.toLowerCase().includes('estefania') || 
                 d.vendedor?.toLowerCase().includes('estefania');
-              return d.userId === currentUser.uid || !belongsToVendor;
-            } else if (filtroVendedor === 'lizz') {
-              return d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz');
-            } else if (filtroVendedor === 'estefania') {
+              return d.created_by === currentUser.uid || d.userId === currentUser.uid || !belongsToVendor;
+            } else if (activeTab === 'lizz') {
+              return d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1');
+            } else if (activeTab === 'estefania') {
               return d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania');
-            } else {
-              return true; // 'todos'
             }
           }
+          return false;
         };
 
         // 1. Préstamos
@@ -103,14 +104,14 @@ const Dashboard = () => {
     if (currentUser) {
       fetchMetricas();
     }
-  }, [currentUser, filtroVendedor]);
+  }, [currentUser, activeTab]);
 
   if (loading) {
     return <div className="p-8 flex items-center justify-center text-slate-500">Cargando métricas...</div>;
   }
 
   const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('lizz');
+  const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
   const isVendor = isLizz || isEstefania;
 
@@ -120,18 +121,25 @@ const Dashboard = () => {
         <div>
           <h2 className="text-3xl font-bold text-slate-100 neon-text flex items-center gap-2">Panel General (Dashboard)</h2>
           {!isVendor && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-slate-400 text-sm">Ver métricas de:</span>
-              <select 
-                value={filtroVendedor} 
-                onChange={(e) => setFiltroVendedor(e.target.value)} 
-                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+            <div className="flex border-b border-indigo-900/50 mt-4 gap-2">
+              <button
+                onClick={() => setActiveTab('mio')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'mio' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
               >
-                <option value="mio">Mis Métricas (Mío)</option>
-                <option value="lizz">Lizz</option>
-                <option value="estefania">Estefanía</option>
-                <option value="todos">Todos</option>
-              </select>
+                Mis Métricas
+              </button>
+              <button
+                onClick={() => setActiveTab('lizz')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'lizz' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Métricas Liz
+              </button>
+              <button
+                onClick={() => setActiveTab('estefania')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'estefania' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Métricas Estefanía
+              </button>
             </div>
           )}
         </div>

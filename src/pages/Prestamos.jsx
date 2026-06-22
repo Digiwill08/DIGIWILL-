@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth } from '../context/AuthContext';const Prestamos = () => {
+import { useAuth } from '../context/AuthContext';
+
+const Prestamos = () => {
   const { currentUser } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [prestamos, setPrestamos] = useState([]);
   const [clientes, setClientes] = useState([]);
-  const [filtroVendedor, setFiltroVendedor] = useState('mio');
+  const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
   
   // Modal de Abonos
   const [abonoModal, setAbonoModal] = useState({ show: false, prestamo: null, monto: '' });
@@ -28,7 +30,7 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
     if (!currentUser) return;
     try {
       const emailLower = currentUser.email?.toLowerCase() || '';
-      const isLizz = emailLower.includes('lizz');
+      const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
       const isEstefania = emailLower.includes('estefania');
       const isVendor = isLizz || isEstefania;
 
@@ -42,33 +44,34 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
       let clientesData = [];
 
       if (isVendor) {
-        // Vendedoras: filtrar por su propio userId, userEmail o vendedor
+        // Vendedoras: filtrar por su propio created_by, userId, userEmail o vendedor
         const filterFn = d => {
-          const isOwner = d.userId === currentUser.uid;
+          const isOwner = d.created_by === currentUser.uid || d.userId === currentUser.uid;
           const matchesEmail = isLizz 
-            ? (d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz'))
+            ? (d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1'))
             : (d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania'));
           return isOwner || matchesEmail;
         };
         prestamosData = allPrestamos.filter(filterFn);
         clientesData = allClientes.filter(filterFn);
       } else {
-        // Administrador: filtrar según la selección
+        // Administrador: filtrar según la selección de pestaña
         const filterFn = d => {
-          if (filtroVendedor === 'mio') {
+          if (activeTab === 'mio') {
             const belongsToVendor = 
               d.userEmail?.toLowerCase().includes('lizz') || 
+              d.userEmail?.toLowerCase().includes('vendedor1') ||
               d.vendedor?.toLowerCase().includes('lizz') ||
+              d.vendedor?.toLowerCase().includes('vendedor1') ||
               d.userEmail?.toLowerCase().includes('estefania') || 
               d.vendedor?.toLowerCase().includes('estefania');
-            return d.userId === currentUser.uid || !belongsToVendor;
-          } else if (filtroVendedor === 'lizz') {
-            return d.userEmail?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('lizz');
-          } else if (filtroVendedor === 'estefania') {
+            return d.created_by === currentUser.uid || d.userId === currentUser.uid || !belongsToVendor;
+          } else if (activeTab === 'lizz') {
+            return d.userEmail?.toLowerCase().includes('lizz') || d.userEmail?.toLowerCase().includes('vendedor1') || d.vendedor?.toLowerCase().includes('lizz') || d.vendedor?.toLowerCase().includes('vendedor1');
+          } else if (activeTab === 'estefania') {
             return d.userEmail?.toLowerCase().includes('estefania') || d.vendedor?.toLowerCase().includes('estefania');
-          } else {
-            return true; // 'todos'
           }
+          return false;
         };
         prestamosData = allPrestamos.filter(filterFn);
         clientesData = allClientes.filter(filterFn);
@@ -94,7 +97,8 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
     if (currentUser) {
       fetchData();
     }
-  }, [currentUser, filtroVendedor]);
+  }, [currentUser, activeTab]);
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -127,8 +131,9 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
         estado: 'activo',
         saldoPendiente: totalConInteres,
         totalInicial: totalConInteres,
-        userId: currentUser.uid,
-        userEmail: currentUser.email
+        created_by: currentUser.uid, // Campo de auditoría obligatorio
+        userId: currentUser.uid,      // Compatibilidad legacy
+        userEmail: currentUser.email   // Compatibilidad legacy
       });
       
       setFormData({ clienteId: '', montoPrincipal: '', tasaInteres: '', frecuenciaCobro: 'mensual' });
@@ -137,7 +142,7 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
       alert('Préstamo registrado con éxito!');
     } catch (error) {
       console.error("Error al guardar: ", error);
-      alert('Hubo un error al guardar. Revisa la consola.');
+      alert('Hubo un error al guardar. Revisa la consola o las reglas de base de datos.');
     } finally {
       setLoading(false);
     }
@@ -162,8 +167,9 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
         prestamoId: p.id,
         montoAbonado: monto,
         fechaPago: serverTimestamp(),
-        userId: currentUser.uid,
-        userEmail: currentUser.email
+        created_by: currentUser.uid, // Campo de auditoría obligatorio
+        userId: currentUser.uid,      // Compatibilidad legacy
+        userEmail: currentUser.email   // Compatibilidad legacy
       });
 
       // Actualizar préstamo
@@ -208,7 +214,7 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
   };
 
   const emailLower = currentUser?.email?.toLowerCase() || '';
-  const isLizz = emailLower.includes('lizz');
+  const isLizz = emailLower.includes('lizz') || emailLower.includes('vendedor1');
   const isEstefania = emailLower.includes('estefania');
   const isVendor = isLizz || isEstefania;
 
@@ -218,18 +224,25 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
         <div>
           <h2 className="text-3xl font-bold text-slate-100">Préstamos WILL</h2>
           {!isVendor && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-slate-400 text-sm">Ver registros de:</span>
-              <select 
-                value={filtroVendedor} 
-                onChange={(e) => setFiltroVendedor(e.target.value)} 
-                className="border border-transparent rounded-lg p-1.5 outline-none glass-panel text-slate-200 text-xs font-semibold"
+            <div className="flex border-b border-indigo-900/50 mt-4 gap-2">
+              <button
+                onClick={() => setActiveTab('mio')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'mio' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
               >
-                <option value="mio">Mis Préstamos (Mío)</option>
-                <option value="lizz">Lizz</option>
-                <option value="estefania">Estefanía</option>
-                <option value="todos">Todos</option>
-              </select>
+                Mis Préstamos
+              </button>
+              <button
+                onClick={() => setActiveTab('lizz')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'lizz' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Gestión Liz
+              </button>
+              <button
+                onClick={() => setActiveTab('estefania')}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'estefania' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+              >
+                Gestión Estefanía
+              </button>
             </div>
           )}
         </div>
@@ -242,7 +255,7 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
       </div>
 
       {showForm && (
-        <div className="glass-panel p-6 rounded-xl  border border-none mb-8">
+        <div className="glass-panel p-6 rounded-xl border border-none mb-8">
           <h3 className="text-xl font-semibold mb-4">Registro de Préstamo</h3>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -339,7 +352,7 @@ import { useAuth } from '../context/AuthContext';const Prestamos = () => {
         </div>
       )}
 
-      <div className="glass-panel rounded-xl  border border-none overflow-hidden">
+      <div className="glass-panel rounded-xl border border-none overflow-hidden overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-transparent border-b border-none">
