@@ -335,7 +335,7 @@ const Prestamos = () => {
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
         <div className="flex items-center gap-3.5">
           <img 
-            src="/prestamos_logo.png" 
+            src="/logo.png" 
             alt="Préstamos Will Logo" 
             className="w-12 h-12 rounded-lg border border-indigo-500/20 object-contain shadow-[0_0_12px_rgba(0,212,255,0.15)] bg-slate-950/40 p-0.5" 
           />
