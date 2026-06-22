@@ -283,6 +283,24 @@ const Prestamos = () => {
     window.open(url, '_blank');
   };
 
+  const handleWhatsAppAbonoReceipt = (prestamo, pago) => {
+    const phone = prestamo.telefono || '';
+    const cleanPhone = phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.length === 10 ? `57${cleanPhone}` : cleanPhone;
+    
+    const fechaPagoStr = pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : new Date().toLocaleString();
+
+    const message = `Hola *${prestamo.nombreCompleto}*, se ha registrado exitosamente tu abono en DIGIWILL. 💸\n\n` +
+                    `Detalle del pago:\n` +
+                    `• Fecha: *${fechaPagoStr}*\n` +
+                    `• Valor abono: *$${pago.montoAbonado}*\n` +
+                    `• Nuevo saldo restante: *$${prestamo.saldoPendiente}*\n\n` +
+                    `¡Gracias por tu pago! ✨`;
+
+    const url = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   const handleExportCSV = () => {
     if (prestamos.length === 0) return alert('No hay préstamos para exportar.');
     
@@ -441,7 +459,16 @@ const Prestamos = () => {
                           {pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Reciente'}
                         </p>
                       </div>
-                      <span className="font-bold text-emerald-500">+${pago.montoAbonado}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-emerald-500">+${pago.montoAbonado}</span>
+                        <button 
+                          onClick={() => handleWhatsAppAbonoReceipt(historialModal.prestamo, pago)}
+                          className="text-xs bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/40 border border-emerald-500/30 p-1.5 rounded-lg transition-colors flex items-center gap-1"
+                          title="Enviar Recibo de Abono por WhatsApp"
+                        >
+                          <MessageCircle size={12} />
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

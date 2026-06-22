@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trash2, Plus, Download } from 'lucide-react';
+import { Trash2, Plus, Download, MessageCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../utils/auditLogger';
 
@@ -23,6 +23,7 @@ const Ventas = () => {
   // Selección temporal de producto
   const [selectedProduct, setSelectedProduct] = useState('');
   const [cantidad, setCantidad] = useState(1);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Estado de Financiación
   const [tipoVenta, setTipoVenta] = useState('contado');
@@ -130,6 +131,24 @@ const Ventas = () => {
     }
   };
 
+  const handleWhatsAppReceipt = (v) => {
+    const clientObj = clientes.find(c => c.id === v.clienteId);
+    const phone = clientObj?.telefono || '';
+    const cleanPhone = phone.replace(/\D/g, '');
+    const formattedPhone = cleanPhone.length === 10 ? `57${cleanPhone}` : cleanPhone;
+
+    const articulosStr = v.detalles.map(d => `• ${d.cantidad}x ${d.nombre} ($${d.precioUnitario})`).join('\n');
+    const message = `Hola *${v.clienteNombre}*, ¡gracias por tu compra en DIGIWILL! 🛍️\n\n` +
+                    `Detalle de tu compra:\n` +
+                    `${articulosStr}\n\n` +
+                    `• Total: *$${v.total}*\n` +
+                    `• Tipo de pago: *${v.tipoVenta === 'financiada' ? 'Crédito' : 'Contado'}*\n\n` +
+                    `Cualquier duda o comentario, estamos a tu disposición. ✨`;
+
+    const url = `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   const handleExportCSV = () => {
     if (ventas.length === 0) return alert('No hay ventas para exportar.');
     
@@ -194,6 +213,7 @@ const Ventas = () => {
     // Limpiar selección temporal
     setSelectedProduct('');
     setCantidad(1);
+    setSearchTerm('');
   };
 
   const eliminarDelCarrito = (id) => {
@@ -382,14 +402,26 @@ const Ventas = () => {
             </div>
 
             <div className="pt-4 border-t">
-              <label className="block text-sm font-medium text-slate-300 mb-1">Agregar Producto</label>
-              <div className="flex gap-2">
-                <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="flex-1 border border-transparent rounded-lg p-2.5 outline-none glass-panel">
-                  <option value="">-- Buscar Producto --</option>
-                  {productos.map(p => <option key={p.id} value={p.id}>{p.nombre} (${p.valorVenta} - Stock: {p.stock})</option>)}
-                </select>
-                <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-20 border border-transparent rounded-lg p-2.5 outline-none text-center" />
-                <button type="button" onClick={agregarAlCarrito} className="bg-gray-800 text-white p-2.5 rounded-lg hover:bg-gray-900"><Plus size={20}/></button>
+              <label className="block text-sm font-medium text-slate-300 mb-1">Buscar y Agregar Producto</label>
+              <div className="space-y-2">
+                <input 
+                  type="text" 
+                  placeholder="Escribe nombre o código de producto..." 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                  className="w-full border border-transparent rounded-lg p-2.5 outline-none"
+                />
+                <div className="flex gap-2">
+                  <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="flex-1 border border-transparent rounded-lg p-2.5 outline-none glass-panel">
+                    <option value="">-- Seleccionar ({productos.filter(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase()))).length} encontrados) --</option>
+                    {productos
+                      .filter(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase())))
+                      .map(p => <option key={p.id} value={p.id}>{p.nombre} (${p.valorVenta} - Stock: {p.stock})</option>)
+                    }
+                  </select>
+                  <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-20 border border-transparent rounded-lg p-2.5 outline-none text-center" />
+                  <button type="button" onClick={agregarAlCarrito} className="bg-gray-800 text-white p-2.5 rounded-lg hover:bg-gray-900"><Plus size={20}/></button>
+                </div>
               </div>
             </div>
           </div>
@@ -457,10 +489,18 @@ const Ventas = () => {
                     {v.detalles.map((d, i) => <div key={i}>{d.cantidad}x {d.nombre}</div>)}
                   </td>
                   <td className="p-4 text-emerald-600 font-bold">${v.total}</td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${v.tipoVenta === 'financiada' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  <td className="p-4 flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${v.tipoVenta === 'financiada' ? 'bg-orange-600/20 text-orange-300 border border-orange-500/30' : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'}`}>
                       {v.tipoVenta === 'financiada' ? 'Crédito' : 'Contado'}
                     </span>
+                    <button 
+                      onClick={() => handleWhatsAppReceipt(v)} 
+                      className="text-xs bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/40 border border-emerald-500/30 p-1.5 rounded-lg transition-colors flex items-center gap-1"
+                      title="Enviar Recibo por WhatsApp"
+                    >
+                      <MessageCircle size={12} />
+                      Recibo
+                    </button>
                   </td>
                 </tr>
               )})
