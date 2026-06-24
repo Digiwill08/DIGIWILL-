@@ -86,9 +86,11 @@ const Dashboard = () => {
           sG3.docs.forEach(doc => mapG.set(doc.id, doc.data()));
 
           mapP.forEach(data => {
-            prestamosCount++;
-            saldoTotal += Number(data.saldoPendiente || 0);
-            clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
+            if (data.ventaId) {
+              prestamosCount++;
+              saldoTotal += Number(data.saldoPendiente || 0);
+              clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
+            }
           });
 
           mapPr.forEach(data => {
@@ -138,7 +140,7 @@ const Dashboard = () => {
 
           snapPrestamos.forEach(doc => {
             const data = doc.data();
-            if (filterFn(data)) {
+            if (filterFn(data) && data.ventaId) {
               prestamosCount++;
               saldoTotal += Number(data.saldoPendiente || 0);
               clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
@@ -267,7 +269,7 @@ const Dashboard = () => {
             <Wallet size={24} />
           </div>
           <div>
-            <h3 className="text-slate-400 text-sm font-medium">Préstamos Activos ({metricas.prestamosActivos})</h3>
+            <h3 className="text-slate-400 text-sm font-medium">Créditos Activos ({metricas.prestamosActivos})</h3>
             <p className="text-3xl font-bold text-indigo-300 mt-1 neon-text">${metricas.saldoPendienteTotal.toLocaleString()}</p>
             <p className="text-xs text-slate-500 mt-1">Saldo pendiente en la calle</p>
           </div>

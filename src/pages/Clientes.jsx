@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
-import { Download } from 'lucide-react';
+import { Download, User, X, FileText, Calendar, DollarSign, Wallet, Award, ArrowUpRight } from 'lucide-react';
 import { logActivity } from '../utils/auditLogger';
+import { formatCOP } from '../utils/format';
 
 const Clientes = () => {
   const { currentUser } = useAuth();
@@ -12,6 +13,91 @@ const Clientes = () => {
   const [clientes, setClientes] = useState([]);
   const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
   const [editingCliente, setEditingCliente] = useState(null);
+
+  // CRM State
+  const [crmModalOpen, setCrmModalOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [crmActiveTab, setCrmActiveTab] = useState('ventas'); // 'ventas', 'prestamos', 'pagos'
+  const [crmData, setCrmData] = useState({
+    loading: false,
+    ventas: [],
+    prestamos: [],
+    pagos: [],
+    totalComprado: 0,
+    saldoPendiente: 0,
+    totalAbonado: 0
+  });
+
+  const fetchClientCRMData = async (client) => {
+    setSelectedClient(client);
+    setCrmModalOpen(true);
+    setCrmData(prev => ({ ...prev, loading: true }));
+    try {
+      const qVentas = query(collection(db, 'ventas'), where('clienteId', '==', client.id));
+      const qPrestamos = query(collection(db, 'prestamos'), where('clienteId', '==', client.id));
+
+      const [snapVentas, snapPrestamos] = await Promise.all([
+        getDocs(qVentas),
+        getDocs(qPrestamos)
+      ]);
+
+      const clientVentas = snapVentas.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const clientPrestamos = snapPrestamos.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(p => !!p.ventaId);
+
+      clientVentas.sort((a, b) => {
+        const tA = a.fechaVenta?.toMillis ? a.fechaVenta.toMillis() : (a.fechaVenta ? new Date(a.fechaVenta).getTime() : 0);
+        const tB = b.fechaVenta?.toMillis ? b.fechaVenta.toMillis() : (b.fechaVenta ? new Date(b.fechaVenta).getTime() : 0);
+        return tB - tA;
+      });
+
+      clientPrestamos.sort((a, b) => {
+        const tA = a.fechaInicio?.toMillis ? a.fechaInicio.toMillis() : (a.fechaInicio ? new Date(a.fechaInicio).getTime() : 0);
+        const tB = b.fechaInicio?.toMillis ? b.fechaInicio.toMillis() : (b.fechaInicio ? new Date(b.fechaInicio).getTime() : 0);
+        return tB - tA;
+      });
+
+      let clientPagos = [];
+      const loanIds = clientPrestamos.map(p => p.id);
+      if (loanIds.length > 0) {
+        if (loanIds.length <= 30) {
+          const qPagos = query(collection(db, 'pagos'), where('prestamoId', 'in', loanIds));
+          const snapPagos = await getDocs(qPagos);
+          clientPagos = snapPagos.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } else {
+          const snapPagos = await getDocs(collection(db, 'pagos'));
+          clientPagos = snapPagos.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(pago => loanIds.includes(pago.prestamoId));
+        }
+      }
+
+      clientPagos.sort((a, b) => {
+        const tA = a.fechaPago?.toMillis ? a.fechaPago.toMillis() : (a.fechaPago ? new Date(a.fechaPago).getTime() : 0);
+        const tB = b.fechaPago?.toMillis ? b.fechaPago.toMillis() : (b.fechaPago ? new Date(b.fechaPago).getTime() : 0);
+        return tB - tA;
+      });
+
+      const totalComprado = clientVentas.reduce((sum, v) => sum + Number(v.total || 0), 0);
+      const saldoPendiente = clientPrestamos
+        .filter(p => p.estado === 'activo')
+        .reduce((sum, p) => sum + Number(p.saldoPendiente || 0), 0);
+      const totalAbonado = clientPagos.reduce((sum, p) => sum + Number(p.montoAbonado || 0), 0);
+
+      setCrmData({
+        loading: false,
+        ventas: clientVentas,
+        prestamos: clientPrestamos,
+        pagos: clientPagos,
+        totalComprado,
+        saldoPendiente,
+        totalAbonado
+      });
+    } catch (err) {
+      console.error("Error loading CRM data:", err);
+      alert("Error al cargar la información del cliente.");
+      setCrmData(prev => ({ ...prev, loading: false }));
+    }
+  };
 
   const [formData, setFormData] = useState({
     nombreCompleto: '',
@@ -77,12 +163,8 @@ const Clientes = () => {
         }
       }
 
-      // Ordenar en memoria por fechaRegistro desc
-      data.sort((a, b) => {
-        const tA = a.fechaRegistro?.toMillis ? a.fechaRegistro.toMillis() : (a.fechaRegistro ? new Date(a.fechaRegistro).getTime() : 0);
-        const tB = b.fechaRegistro?.toMillis ? b.fechaRegistro.toMillis() : (b.fechaRegistro ? new Date(b.fechaRegistro).getTime() : 0);
-        return tB - tA;
-      });
+      // Ordenar en memoria por nombre alfabéticamente (A-Z)
+      data.sort((a, b) => (a.nombreCompleto || '').localeCompare(b.nombreCompleto || ''));
 
       setClientes(data);
     } catch (error) {
@@ -316,6 +398,12 @@ const Clientes = () => {
                   <td className="p-4 text-slate-400">{c.direccion}</td>
                   <td className="p-4 flex gap-2">
                     <button
+                      onClick={() => fetchClientCRMData(c)}
+                      className="px-3 py-1 bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold hover:bg-emerald-600/50 transition-colors"
+                    >
+                      Ver Perfil
+                    </button>
+                    <button
                       onClick={() => setEditingCliente(c)}
                       className="px-3 py-1 bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-semibold hover:bg-indigo-600/50 transition-colors"
                     >
@@ -409,6 +497,185 @@ const Clientes = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal CRM de Cliente */}
+      {crmModalOpen && selectedClient && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel p-6 rounded-xl shadow-lg max-w-4xl w-full border border-indigo-500/30 relative max-h-[90vh] overflow-y-auto flex flex-col">
+            
+            {/* Header */}
+            <div className="flex justify-between items-start border-b border-indigo-950 pb-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <User size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-100">{selectedClient.nombreCompleto}</h3>
+                  <p className="text-sm text-slate-400">C.C. {selectedClient.cedula} • Tel: {selectedClient.telefono}</p>
+                  <p className="text-xs text-slate-500">{selectedClient.direccion}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setCrmModalOpen(false)}
+                className="text-slate-400 hover:text-slate-100 bg-slate-800/40 p-1.5 rounded-lg border border-slate-700/35 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {crmData.loading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-indigo-400">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-400 mb-4"></div>
+                <p>Cargando información del cliente...</p>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col min-h-0">
+                
+                {/* Metric cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-indigo-950/20 border border-indigo-900/40 p-4 rounded-xl flex items-center gap-4">
+                    <div className="p-3 rounded-lg bg-indigo-600/20 text-indigo-300"><DollarSign size={20}/></div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400">Total Comprado (Contado)</p>
+                      <h4 className="text-lg font-bold text-slate-100">${formatCOP(crmData.totalComprado)}</h4>
+                    </div>
+                  </div>
+                  <div className="bg-rose-950/10 border border-rose-900/30 p-4 rounded-xl flex items-center gap-4">
+                    <div className="p-3 rounded-lg bg-rose-600/20 text-rose-300"><Wallet size={20}/></div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400">Saldo Pendiente (Ventas a Crédito)</p>
+                      <h4 className="text-lg font-bold text-rose-400">${formatCOP(crmData.saldoPendiente)}</h4>
+                    </div>
+                  </div>
+                  <div className="bg-emerald-950/10 border border-emerald-900/30 p-4 rounded-xl flex items-center gap-4">
+                    <div className="p-3 rounded-lg bg-emerald-600/20 text-emerald-300"><Award size={20}/></div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400">Total Abonado a Créditos</p>
+                      <h4 className="text-lg font-bold text-emerald-400">${formatCOP(crmData.totalAbonado)}</h4>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Navigation Tabs */}
+                <div className="flex border-b border-indigo-950/50 mb-4 gap-2">
+                  <button
+                    onClick={() => setCrmActiveTab('ventas')}
+                    className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${crmActiveTab === 'ventas' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Compras ({crmData.ventas.length})
+                  </button>
+                  <button
+                    onClick={() => setCrmActiveTab('prestamos')}
+                    className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${crmActiveTab === 'prestamos' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Créditos/Financiación ({crmData.prestamos.length})
+                  </button>
+                  <button
+                    onClick={() => setCrmActiveTab('pagos')}
+                    className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${crmActiveTab === 'pagos' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Historial de Abonos ({crmData.pagos.length})
+                  </button>
+                </div>
+
+                {/* Tab Contents */}
+                <div className="flex-1 min-h-[250px] max-h-[350px] overflow-y-auto pr-1">
+                  {crmActiveTab === 'ventas' && (
+                    <div className="space-y-3">
+                      {crmData.ventas.length === 0 ? (
+                        <p className="text-slate-500 text-center py-10 text-sm">Este cliente no registra compras directas.</p>
+                      ) : (
+                        crmData.ventas.map(v => {
+                          const date = v.fechaVenta ? new Date(v.fechaVenta.toDate()).toLocaleString() : 'Reciente';
+                          return (
+                            <div key={v.id} className="glass-panel p-4 rounded-xl border border-indigo-900/10 flex flex-col md:flex-row justify-between gap-4">
+                              <div>
+                                <p className="text-xs text-slate-500 mb-1 flex items-center gap-1"><Calendar size={12}/> {date}</p>
+                                <div className="text-sm font-medium text-slate-200">
+                                  {v.detalles?.map((d, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 mt-0.5">
+                                      <span className="text-emerald-500 font-bold">{d.cantidad}x</span> 
+                                      <span>{d.nombre}</span>
+                                      <span className="text-xs text-slate-500">(${formatCOP(d.precioUnitario)})</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="flex flex-col md:items-end justify-between">
+                                <span className="font-bold text-slate-100">${formatCOP(v.total)}</span>
+                                <span className={`text-[10px] px-2 py-0.5 mt-2 rounded font-semibold self-start md:self-auto ${v.tipoVenta === 'financiada' ? 'bg-orange-600/20 text-orange-300' : 'bg-emerald-600/20 text-emerald-300'}`}>
+                                  {v.tipoVenta === 'financiada' ? 'A Crédito' : 'Contado'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+
+                  {crmActiveTab === 'prestamos' && (
+                    <div className="space-y-3">
+                      {crmData.prestamos.length === 0 ? (
+                        <p className="text-slate-500 text-center py-10 text-sm">Este cliente no registra deudas ni ventas a crédito.</p>
+                      ) : (
+                        crmData.prestamos.map(p => {
+                          const date = p.fechaInicio ? new Date(p.fechaInicio.toDate()).toLocaleDateString() : 'Reciente';
+                          return (
+                            <div key={p.id} className="glass-panel p-4 rounded-xl border border-indigo-900/10 flex flex-col md:flex-row justify-between gap-4">
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className={`text-xs px-2 py-0.5 rounded font-semibold ${p.estado === 'activo' ? 'bg-amber-600/20 text-amber-300 border border-amber-500/20' : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/20'}`}>
+                                    {p.estado === 'activo' ? 'Activo' : 'Pagado'}
+                                  </span>
+                                  <span className="text-xs text-slate-500 flex items-center gap-1"><Calendar size={12}/> {date}</span>
+                                </div>
+                                <p className="text-sm text-slate-300">
+                                  Valor Financiado: <strong className="text-slate-100">${formatCOP(p.montoPrincipal)}</strong>
+                                  <span className="text-xs text-slate-500 ml-2">({p.tasaInteres}% interés • Frecuencia: {p.frecuenciaCobro})</span>
+                                </p>
+                              </div>
+                              <div className="flex flex-col md:items-end justify-center">
+                                <p className="text-xs text-slate-400">Saldo Pendiente</p>
+                                <span className="font-bold text-rose-400 text-lg">${formatCOP(p.saldoPendiente)}</span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+
+                  {crmActiveTab === 'pagos' && (
+                    <div className="space-y-3">
+                      {crmData.pagos.length === 0 ? (
+                        <p className="text-slate-500 text-center py-10 text-sm">No se registran abonos en el sistema.</p>
+                      ) : (
+                        crmData.pagos.map(pago => {
+                          const date = pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Reciente';
+                          const matchingLoan = crmData.prestamos.find(pr => pr.id === pago.prestamoId);
+                          return (
+                            <div key={pago.id} className="glass-panel p-3 rounded-xl border border-indigo-900/10 flex justify-between items-center">
+                              <div>
+                                <p className="text-xs text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={12}/> {date}</p>
+                                <p className="text-sm text-slate-200">
+                                  Abono para venta financiada de: <span className="text-indigo-400 font-semibold">${formatCOP(matchingLoan?.montoPrincipal || 0)}</span>
+                                </p>
+                              </div>
+                              <span className="font-bold text-emerald-400 text-md">+ ${formatCOP(pago.montoAbonado)}</span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
           </div>
         </div>
       )}
