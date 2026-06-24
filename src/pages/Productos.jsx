@@ -20,7 +20,8 @@ const Productos = () => {
     nombre: '',
     valorCompra: '',
     valorVenta: '',
-    stock: ''
+    stock: '',
+    descripcion: ''
   });
 
   const fetchProductos = async () => {
@@ -163,10 +164,11 @@ const Productos = () => {
   const handleExportCSV = () => {
     if (viewMode === 'inventario') {
       if (productos.length === 0) return alert('No hay productos para exportar.');
-      const headers = ['ID', 'Producto', 'Costo Compra', 'Precio Venta', 'Stock'];
+      const headers = ['ID', 'Producto', 'Descripción', 'Costo Compra', 'Precio Venta', 'Stock'];
       const rows = productos.map(p => [
         p.id,
         p.nombre,
+        p.descripcion || '',
         p.valorCompra,
         p.valorVenta,
         p.stock
@@ -231,6 +233,7 @@ const Productos = () => {
         valorCompra: Number(formData.valorCompra),
         valorVenta: Number(formData.valorVenta),
         stock: Number(formData.stock),
+        descripcion: formData.descripcion || '',
         fechaCreacion: serverTimestamp(),
         created_by: currentUser.uid, // Campo de auditoría obligatorio
         userId: currentUser.uid,      // Compatibilidad legacy
@@ -253,7 +256,7 @@ const Productos = () => {
       // Auditoría
       await logActivity(currentUser, 'creacion_producto', `Creó el producto '${formData.nombre}' con costo $${formData.valorCompra}, precio $${formData.valorVenta} y stock inicial ${formData.stock}`, 'productos', docRef.id);
       
-      setFormData({ nombre: '', valorCompra: '', valorVenta: '', stock: '' });
+      setFormData({ nombre: '', valorCompra: '', valorVenta: '', stock: '', descripcion: '' });
       setShowForm(false);
       fetchProductos();
       alert('Producto registrado con éxito!');
@@ -278,7 +281,8 @@ const Productos = () => {
         nombre: editingProduct.nombre,
         valorCompra: Number(editingProduct.valorCompra),
         valorVenta: Number(editingProduct.valorVenta),
-        stock: Number(editingProduct.stock)
+        stock: Number(editingProduct.stock),
+        descripcion: editingProduct.descripcion || ''
       });
 
       if (diff !== 0) {
@@ -402,6 +406,10 @@ const Productos = () => {
                 <label className="block text-sm font-medium text-slate-300 mb-1">Nombre del Producto / Servicio</label>
                 <input required type="text" name="nombre" value={formData.nombre} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 outline-none" />
               </div>
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-slate-300 mb-1">Descripción (Opcional)</label>
+                <textarea name="descripcion" value={formData.descripcion || ''} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 outline-none" rows="2" />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">Valor de Compra (Costo)</label>
                 <input required type="number" name="valorCompra" value={formData.valorCompra} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 outline-none" />
@@ -430,6 +438,7 @@ const Productos = () => {
             <thead>
               <tr className="bg-transparent border-b border-none">
                 <th className="p-4 text-sm font-semibold text-slate-400">Producto</th>
+                <th className="p-4 text-sm font-semibold text-slate-400">Descripción</th>
                 <th className="p-4 text-sm font-semibold text-slate-400">Costo Compra</th>
                 <th className="p-4 text-sm font-semibold text-slate-400">Precio Venta</th>
                 <th className="p-4 text-sm font-semibold text-slate-400">Stock</th>
@@ -439,12 +448,15 @@ const Productos = () => {
             <tbody>
               {productos.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="p-8 text-center text-slate-500">No hay productos registrados</td>
+                  <td colSpan="6" className="p-8 text-center text-slate-500">No hay productos registrados</td>
                 </tr>
               ) : (
                 productos.map(p => (
                   <tr key={p.id} className="border-b border-none hover:bg-transparent">
                     <td className="p-4 font-medium text-slate-100">{p.nombre}</td>
+                    <td className="p-4 text-slate-300 text-sm max-w-xs truncate" title={p.descripcion || ''}>
+                      {p.descripcion || <span className="text-slate-600 italic">Sin descripción</span>}
+                    </td>
                     <td className="p-4 text-slate-400">${p.valorCompra}</td>
                     <td className="p-4 text-emerald-600 font-bold">${p.valorVenta}</td>
                     <td className="p-4 text-slate-400">
@@ -526,6 +538,15 @@ const Productos = () => {
                   value={editingProduct.nombre}
                   onChange={(e) => setEditingProduct({ ...editingProduct, nombre: e.target.value })}
                   className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Descripción</label>
+                <textarea
+                  value={editingProduct.descripcion || ''}
+                  onChange={(e) => setEditingProduct({ ...editingProduct, descripcion: e.target.value })}
+                  className="w-full border border-transparent rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  rows="2"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">

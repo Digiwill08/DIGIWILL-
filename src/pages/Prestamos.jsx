@@ -23,6 +23,7 @@ const Prestamos = () => {
   const [prestamos, setPrestamos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
+  const [prestamosTab, setPrestamosTab] = useState('efectivo'); // 'efectivo', 'ventas'
   
   // Modal de Abonos
   const [abonoModal, setAbonoModal] = useState({ show: false, prestamo: null, monto: '' });
@@ -301,11 +302,14 @@ const Prestamos = () => {
     window.open(url, '_blank');
   };
 
+  const prestamosPorTipo = prestamos.filter(p => prestamosTab === 'efectivo' ? !p.ventaId : !!p.ventaId);
+
   const handleExportCSV = () => {
-    if (prestamos.length === 0) return alert('No hay préstamos para exportar.');
+    const dataToExport = prestamosPorTipo;
+    if (dataToExport.length === 0) return alert('No hay registros para exportar.');
     
     const headers = ['ID', 'Cliente', 'Cedula', 'Telefono', 'Monto Principal', 'Interes (%)', 'Frecuencia', 'Saldo Pendiente', 'Estado'];
-    const rows = prestamos.map(p => [
+    const rows = dataToExport.map(p => [
       p.id,
       p.nombreCompleto,
       p.cedula,
@@ -324,7 +328,7 @@ const Prestamos = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `prestamos_export_${activeTab}.csv`);
+    link.setAttribute('download', `${prestamosTab === 'efectivo' ? 'prestamos' : 'ventas_credito'}_export_${activeTab}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -372,16 +376,34 @@ const Prestamos = () => {
             <Download size={16} />
             Exportar Excel
           </button>
-          <button 
-            onClick={() => setShowForm(!showForm)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            {showForm ? 'Cancelar' : 'Nuevo Préstamo'}
-          </button>
+          {prestamosTab === 'efectivo' && (
+            <button 
+              onClick={() => setShowForm(!showForm)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+              {showForm ? 'Cancelar' : 'Nuevo Préstamo'}
+            </button>
+          )}
         </div>
       </div>
 
-      {showForm && (
+      {/* Pestañas de Tipo de Préstamo */}
+      <div className="flex border-b border-indigo-900/30 mb-6 gap-2">
+        <button
+          onClick={() => setPrestamosTab('efectivo')}
+          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${prestamosTab === 'efectivo' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          💵 Préstamos en Efectivo
+        </button>
+        <button
+          onClick={() => setPrestamosTab('ventas')}
+          className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${prestamosTab === 'ventas' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          🛍️ Ventas a Crédito
+        </button>
+      </div>
+
+      {showForm && prestamosTab === 'efectivo' && (
         <div className="glass-panel p-6 rounded-xl border border-none mb-8">
           <h3 className="text-xl font-semibold mb-4">Registro de Préstamo</h3>
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -500,12 +522,14 @@ const Prestamos = () => {
             </tr>
           </thead>
           <tbody>
-            {prestamos.length === 0 ? (
+            {prestamosPorTipo.length === 0 ? (
               <tr>
-                <td colSpan="5" className="p-8 text-center text-slate-500">No hay préstamos registrados</td>
+                <td colSpan="5" className="p-8 text-center text-slate-500">
+                  No hay {prestamosTab === 'efectivo' ? 'préstamos' : 'ventas a crédito'} registrados
+                </td>
               </tr>
             ) : (
-              prestamos.map(p => (
+              prestamosPorTipo.map(p => (
                 <tr key={p.id} className="border-b border-none hover:bg-transparent">
                   <td className="p-4 font-medium text-slate-100">{p.nombreCompleto} <br/><span className="text-xs text-slate-500">{p.cedula}</span></td>
                   <td className="p-4 text-slate-400">${p.montoPrincipal} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
