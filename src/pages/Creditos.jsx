@@ -3,10 +3,12 @@ import { Navigate } from 'react-router-dom';
 import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
-import { MessageCircle, Download } from 'lucide-react';
+import { MessageCircle, Download, BadgePercent } from 'lucide-react';
 import { logActivity } from '../utils/auditLogger';
 
-const Prestamos = () => {
+const formatCOP = (val) => Number(val || 0).toLocaleString('es-CO');
+
+const Creditos = () => {
   const { currentUser } = useAuth();
 
   const emailLower = currentUser?.email?.toLowerCase() || '';
@@ -18,11 +20,11 @@ const Prestamos = () => {
     return <Navigate to="/" replace />;
   }
 
-  const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [prestamos, setPrestamos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [activeTab, setActiveTab] = useState('mio'); // 'mio', 'lizz', 'estefania'
+  const [viewFilter, setViewFilter] = useState('todos'); // 'todos', 'cobros'
   
   // Modal de Abonos
   const [abonoModal, setAbonoModal] = useState({ show: false, prestamo: null, monto: '' });
@@ -30,14 +32,6 @@ const Prestamos = () => {
   // Modal Historial
   const [historialModal, setHistorialModal] = useState({ show: false, prestamo: null, pagos: [] });
   const [loadingPagos, setLoadingPagos] = useState(false);
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    clienteId: '',
-    montoPrincipal: '',
-    tasaInteres: '',
-    frecuenciaCobro: 'mensual'
-  });
 
   const fetchData = async () => {
     if (!currentUser) return;
@@ -51,7 +45,6 @@ const Prestamos = () => {
       let clientesData = [];
 
       if (isVendor) {
-        // Vendedoras: Consultar de forma segura usando cláusulas 'where' para cumplir las reglas de Firestore
         const qP1 = query(collection(db, 'prestamos'), where('created_by', '==', currentUser.uid));
         const qP2 = query(collection(db, 'prestamos'), where('userId', '==', currentUser.uid));
         const qP3 = query(collection(db, 'prestamos'), where('vendedor', '==', currentUser.email));
@@ -77,7 +70,6 @@ const Prestamos = () => {
         snapC3.docs.forEach(doc => mapC.set(doc.id, { id: doc.id, ...doc.data() }));
         clientesData = Array.from(mapC.values());
       } else {
-        // Administrador: Puede consultar la colección completa sin problemas
         const [snapPrestamos, snapClientes] = await Promise.all([
           getDocs(collection(db, 'prestamos')),
           getDocs(collection(db, 'clientes'))
@@ -107,8 +99,8 @@ const Prestamos = () => {
         clientesData = allClientes.filter(filterFn);
       }
 
-      // Filtrar para mostrar únicamente préstamos de efectivo
-      prestamosData = prestamosData.filter(p => !p.ventaId);
+      // Filtrar para mostrar únicamente créditos de ventas
+      prestamosData = prestamosData.filter(p => !!p.ventaId);
 
       // Ordenar en memoria
       prestamosData.sort((a, b) => {
@@ -132,58 +124,6 @@ const Prestamos = () => {
     }
   }, [currentUser, activeTab]);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!currentUser) return;
-    if (!formData.clienteId) {
-      alert("Por favor selecciona un cliente.");
-      return;
-    }
-    
-    setLoading(true);
-    const clienteSeleccionado = clientes.find(c => c.id === formData.clienteId);
-    
-    try {
-      const montoP = Number(formData.montoPrincipal);
-      const tasaI = Number(formData.tasaInteres);
-      const totalConInteres = montoP + (montoP * (tasaI / 100));
-
-      const loanRef = await addDoc(collection(db, 'prestamos'), {
-        clienteId: formData.clienteId,
-        nombreCompleto: clienteSeleccionado.nombreCompleto,
-        cedula: clienteSeleccionado.cedula,
-        telefono: clienteSeleccionado.telefono,
-        montoPrincipal: montoP,
-        tasaInteres: tasaI,
-        frecuenciaCobro: formData.frecuenciaCobro,
-        fechaInicio: serverTimestamp(),
-        estado: 'activo',
-        saldoPendiente: totalConInteres,
-        totalInicial: totalConInteres,
-        created_by: currentUser.uid, // Campo de auditoría obligatorio
-        userId: currentUser.uid,      // Compatibilidad legacy
-        userEmail: currentUser.email   // Compatibilidad legacy
-      });
-
-      // Auditoría
-      await logActivity(currentUser, 'creacion_prestamo', `Creó un préstamo por valor principal de $${montoP} con interés del ${tasaI}% (Total a cobrar: $${totalConInteres}) al cliente '${clienteSeleccionado.nombreCompleto}'`, 'prestamos', loanRef.id);
-      
-      setFormData({ clienteId: '', montoPrincipal: '', tasaInteres: '', frecuenciaCobro: 'mensual' });
-      setShowForm(false);
-      fetchData();
-      alert('Préstamo registrado con éxito!');
-    } catch (error) {
-      console.error("Error al guardar: ", error);
-      alert('Hubo un error al guardar. Revisa la consola o las reglas de base de datos.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleAbonar = async (e) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -203,9 +143,9 @@ const Prestamos = () => {
         prestamoId: p.id,
         montoAbonado: monto,
         fechaPago: serverTimestamp(),
-        created_by: currentUser.uid, // Campo de auditoría obligatorio
-        userId: currentUser.uid,      // Compatibilidad legacy
-        userEmail: currentUser.email   // Compatibilidad legacy
+        created_by: currentUser.uid,
+        userId: currentUser.uid,
+        userEmail: currentUser.email
       });
 
       // Actualizar préstamo
@@ -219,7 +159,7 @@ const Prestamos = () => {
       });
 
       // Auditoría
-      await logActivity(currentUser, 'abono_prestamo', `Registró un abono de $${monto} para el préstamo del cliente '${p.nombreCompleto}' (Nuevo saldo: $${nuevoSaldo})`, 'pagos', pagoRef.id);
+      await logActivity(currentUser, 'abono_prestamo', `Registró un abono de $${monto} para el crédito de la venta del cliente '${p.nombreCompleto}' (Nuevo saldo: $${nuevoSaldo})`, 'pagos', pagoRef.id);
 
       setAbonoModal({ show: false, prestamo: null, monto: '' });
       fetchData();
@@ -228,7 +168,6 @@ const Prestamos = () => {
       console.error("Error registrando abono:", error);
       alert('Error al registrar abono.');
     } finally {
-      setLoadingPagos(false);
       setLoading(false);
     }
   };
@@ -277,7 +216,7 @@ const Prestamos = () => {
     const cleanPhone = phone.replace(/\D/g, '');
     const formattedPhone = cleanPhone.length === 10 ? `57${cleanPhone}` : cleanPhone;
     
-    const message = `Hola *${p.nombreCompleto}*, te recordamos que tienes un abono pendiente de tu préstamo WILL. \n\n` +
+    const message = `Hola *${p.nombreCompleto}*, te recordamos que tienes un abono pendiente de tu compra a crédito en DIGIWILL. \n\n` +
                     `• Frecuencia de cobro: *${p.frecuenciaCobro}* \n` +
                     `• Saldo pendiente: *$${p.saldoPendiente}* \n\n` +
                     `¡Agradecemos tu valiosa puntualidad! ✨`;
@@ -304,10 +243,39 @@ const Prestamos = () => {
     window.open(url, '_blank');
   };
 
-  const handleExportCSV = () => {
-    if (prestamos.length === 0) return alert('No hay préstamos para exportar.');
+  const isDueTodayOrOverdue = (p) => {
+    if (p.estado !== 'activo') return false;
+    const start = p.fechaInicio?.toDate ? p.fechaInicio.toDate() : new Date();
+    const diffTime = Math.abs(new Date() - start);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    const headers = ['ID', 'Cliente', 'Cedula', 'Telefono', 'Monto Principal', 'Interes (%)', 'Frecuencia', 'Saldo Pendiente', 'Estado'];
+    let intervalDays = 30;
+    if (p.frecuenciaCobro === 'diario') intervalDays = 1;
+    else if (p.frecuenciaCobro === 'semanal') intervalDays = 7;
+    else if (p.frecuenciaCobro === 'quincenal') intervalDays = 15;
+    
+    return diffDays >= intervalDays;
+  };
+
+  const prestamosActivos = prestamos.filter(p => p.estado === 'activo');
+  
+  const totalPrincipal = prestamosActivos.reduce((sum, p) => sum + Number(p.montoPrincipal || 0), 0);
+  const totalPendiente = prestamosActivos.reduce((sum, p) => sum + Number(p.saldoPendiente || 0), 0);
+  const totalCobrado = prestamosActivos.reduce((sum, p) => {
+    const inicial = Number(p.totalInicial || p.montoPrincipal || 0);
+    const pendiente = Number(p.saldoPendiente || 0);
+    return sum + Math.max(0, inicial - pendiente);
+  }, 0);
+
+  const prestamosCobrosHoy = prestamosActivos.filter(isDueTodayOrOverdue);
+  const totalCobrosHoyP = prestamosCobrosHoy.reduce((sum, p) => sum + Number(p.saldoPendiente || 0), 0);
+
+  const prestamosFiltrados = viewFilter === 'cobros' ? prestamosCobrosHoy : prestamos;
+
+  const handleExportCSV = () => {
+    if (prestamos.length === 0) return alert('No hay créditos para exportar.');
+    
+    const headers = ['ID', 'Cliente', 'Cedula', 'Telefono', 'Monto Financiado', 'Interes (%)', 'Frecuencia', 'Saldo Pendiente', 'Estado'];
     const rows = prestamos.map(p => [
       p.id,
       p.nombreCompleto,
@@ -327,7 +295,7 @@ const Prestamos = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `prestamos_export_${activeTab}.csv`);
+    link.setAttribute('download', `creditos_ventas_export_${activeTab}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -337,36 +305,35 @@ const Prestamos = () => {
     <div className="p-8 relative">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
         <div className="flex items-center gap-3.5">
-          <img 
-            src="/logo.png" 
-            alt="Préstamos Will Logo" 
-            className="w-12 h-12 rounded-lg border border-indigo-500/20 object-contain shadow-[0_0_12px_rgba(0,212,255,0.15)] bg-slate-950/40 p-0.5" 
-          />
+          <div className="p-2.5 bg-pink-600/20 text-pink-400 border border-pink-500/20 rounded-lg shadow-[0_0_12px_rgba(236,72,153,0.15)] shrink-0">
+            <BadgePercent size={28} />
+          </div>
           <div>
-            <h2 className="text-3xl font-bold text-slate-100">Préstamos WILL</h2>
-          {!isVendor && (
-            <div className="flex border-b border-indigo-900/50 mt-4 gap-2">
-              <button
-                onClick={() => setActiveTab('mio')}
-                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'mio' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-              >
-                Mis Préstamos
-              </button>
-              <button
-                onClick={() => setActiveTab('lizz')}
-                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'lizz' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-              >
-                Gestión Liz
-              </button>
-              <button
-                onClick={() => setActiveTab('estefania')}
-                className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'estefania' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
-              >
-                Gestión Estefanía
-              </button>
-            </div>
-          )}
-        </div></div>
+            <h2 className="text-3xl font-bold text-slate-100">Créditos de Ventas</h2>
+            {!isVendor && (
+              <div className="flex border-b border-indigo-900/50 mt-4 gap-2">
+                <button
+                  onClick={() => setActiveTab('mio')}
+                  className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'mio' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                >
+                  Mis Créditos
+                </button>
+                <button
+                  onClick={() => setActiveTab('lizz')}
+                  className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'lizz' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                >
+                  Gestión Liz
+                </button>
+                <button
+                  onClick={() => setActiveTab('estefania')}
+                  className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'estefania' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                >
+                  Gestión Estefanía
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
         <div className="flex gap-2 self-start sm:self-auto">
           <button 
             onClick={handleExportCSV}
@@ -375,54 +342,86 @@ const Prestamos = () => {
             <Download size={16} />
             Exportar Excel
           </button>
-          <button 
-            onClick={() => setShowForm(!showForm)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            {showForm ? 'Cancelar' : 'Nuevo Préstamo'}
-          </button>
         </div>
       </div>
 
-      {showForm && (
-        <div className="glass-panel p-6 rounded-xl border border-none mb-8">
-          <h3 className="text-xl font-semibold mb-4">Registro de Préstamo</h3>
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-300 mb-1">Seleccionar Cliente</label>
-                <select required name="clienteId" value={formData.clienteId} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none glass-panel">
-                  <option value="">-- Elige un cliente de la base de datos --</option>
-                  {clientes.map(c => (
-                    <option key={c.id} value={c.id}>{c.nombreCompleto} (C.C: {c.cedula})</option>
-                  ))}
-                </select>
-                {clientes.length === 0 && <p className="text-xs text-orange-500 mt-1">No tienes clientes registrados. Ve a la sección "Clientes" primero.</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Valor del Préstamo</label>
-                <input required type="number" name="montoPrincipal" value={formData.montoPrincipal} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Tasa de Interés (%)</label>
-                <input required type="number" name="tasaInteres" value={formData.tasaInteres} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia de Cobro</label>
-                <select name="frecuenciaCobro" value={formData.frecuenciaCobro} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none glass-panel">
-                  <option value="diario">Diario</option>
-                  <option value="semanal">Semanal</option>
-                  <option value="quincenal">Quincenal</option>
-                  <option value="mensual">Mensual</option>
-                </select>
-              </div>
+      {/* Selector de Vista Secundario */}
+      <div className="flex border-b border-indigo-900/50 mb-6 gap-2">
+        <button
+          onClick={() => setViewFilter('todos')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${viewFilter === 'todos' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          Todos los Créditos ({prestamos.length})
+        </button>
+        <button
+          onClick={() => setViewFilter('cobros')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${viewFilter === 'cobros' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+        >
+          Cobros de Hoy
+          {prestamosCobrosHoy.length > 0 && (
+            <span className="bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0">
+              {prestamosCobrosHoy.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Tarjetas de Resumen y Totales */}
+      {viewFilter === 'todos' ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="glass-panel p-5 rounded-xl border border-none flex items-center gap-4">
+            <div className="p-3 bg-indigo-900/40 text-indigo-300 rounded-lg">
+              <span className="text-xl">💰</span>
             </div>
-            <div className="pt-4">
-              <button disabled={loading || clientes.length === 0} type="submit" className="neon-button w-full sm:w-auto disabled:opacity-50">
-                {loading ? 'Guardando...' : 'Guardar Préstamo'}
-              </button>
+            <div>
+              <h4 className="text-slate-400 text-xs font-semibold">Total Financiado (Ventas)</h4>
+              <p className="text-2xl font-bold text-slate-100 mt-0.5">${formatCOP(totalPrincipal)}</p>
+              <p className="text-[10px] text-slate-500">Monto total de ventas a crédito activo</p>
             </div>
-          </form>
+          </div>
+          <div className="glass-panel p-5 rounded-xl border border-none flex items-center gap-4">
+            <div className="p-3 bg-rose-900/30 text-rose-300 rounded-lg">
+              <span className="text-xl">💸</span>
+            </div>
+            <div>
+              <h4 className="text-slate-400 text-xs font-semibold">Total por Cobrar (Saldo Ventas)</h4>
+              <p className="text-2xl font-bold text-rose-400 mt-0.5">${formatCOP(totalPendiente)}</p>
+              <p className="text-[10px] text-slate-500">Cartera pendiente de ventas</p>
+            </div>
+          </div>
+          <div className="glass-panel p-5 rounded-xl border border-none flex items-center gap-4">
+            <div className="p-3 bg-emerald-900/30 text-emerald-300 rounded-lg">
+              <span className="text-xl">📈</span>
+            </div>
+            <div>
+              <h4 className="text-slate-400 text-xs font-semibold">Total Recaudado (Ventas)</h4>
+              <p className="text-2xl font-bold text-emerald-400 mt-0.5">${formatCOP(totalCobrado)}</p>
+              <p className="text-[10px] text-slate-500">Capital y ganancias de ventas retornadas</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="glass-panel p-5 rounded-xl border border-none flex items-center gap-4">
+            <div className="p-3 bg-amber-900/40 text-amber-300 rounded-lg">
+              <span className="text-xl">📅</span>
+            </div>
+            <div>
+              <h4 className="text-slate-400 text-xs font-semibold">Cobros Pendientes para Hoy (Ventas)</h4>
+              <p className="text-2xl font-bold text-slate-100 mt-0.5">{prestamosCobrosHoy.length} Clientes</p>
+              <p className="text-[10px] text-slate-500">Créditos de ventas con cuotas a cobrar hoy</p>
+            </div>
+          </div>
+          <div className="glass-panel p-5 rounded-xl border border-none flex items-center gap-4">
+            <div className="p-3 bg-rose-900/30 text-rose-300 rounded-lg">
+              <span className="text-xl">💵</span>
+            </div>
+            <div>
+              <h4 className="text-slate-400 text-xs font-semibold">Monto Estimado a Cobrar (Ventas)</h4>
+              <p className="text-2xl font-bold text-rose-400 mt-0.5">${formatCOP(totalCobrosHoyP)}</p>
+              <p className="text-[10px] text-slate-500">Saldo pendiente de los créditos a cobrar hoy</p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -431,7 +430,7 @@ const Prestamos = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="glass-panel p-6 rounded-xl shadow-lg max-w-sm w-full">
             <h3 className="text-lg font-bold mb-2">Registrar Abono</h3>
-            <p className="text-sm text-slate-400 mb-4">Cliente: {abonoModal.prestamo.nombreCompleto}<br/>Saldo Actual: <span className="font-bold text-indigo-600">${abonoModal.prestamo.saldoPendiente}</span></p>
+            <p className="text-sm text-slate-400 mb-4">Cliente: {abonoModal.prestamo.nombreCompleto}<br/>Saldo Actual: <span className="font-bold text-indigo-600">${formatCOP(abonoModal.prestamo.saldoPendiente)}</span></p>
             <form onSubmit={handleAbonar}>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-slate-300 mb-1">Monto a abonar</label>
@@ -469,7 +468,7 @@ const Prestamos = () => {
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-emerald-500">+${pago.montoAbonado}</span>
+                        <span className="font-bold text-emerald-500">+${formatCOP(pago.montoAbonado)}</span>
                         <button 
                           onClick={() => handleWhatsAppAbonoReceipt(historialModal.prestamo, pago)}
                           className="text-xs bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/40 border border-emerald-500/30 p-1.5 rounded-lg transition-colors flex items-center gap-1"
@@ -496,24 +495,24 @@ const Prestamos = () => {
           <thead>
             <tr className="bg-transparent border-b border-none">
               <th className="p-4 text-sm font-semibold text-slate-400">Cliente</th>
-              <th className="p-4 text-sm font-semibold text-slate-400">Monto</th>
+              <th className="p-4 text-sm font-semibold text-slate-400">Monto Financiado</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Frecuencia</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Saldo Pendiente</th>
               <th className="p-4 text-sm font-semibold text-slate-400">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            {prestamos.length === 0 ? (
+            {prestamosFiltrados.length === 0 ? (
               <tr>
-                <td colSpan="5" className="p-8 text-center text-slate-500">No hay préstamos registrados</td>
+                <td colSpan="5" className="p-8 text-center text-slate-500">No hay cobros o créditos de ventas en esta vista</td>
               </tr>
             ) : (
-              prestamos.map(p => (
+              prestamosFiltrados.map(p => (
                 <tr key={p.id} className="border-b border-none hover:bg-transparent">
                   <td className="p-4 font-medium text-slate-100">{p.nombreCompleto} <br/><span className="text-xs text-slate-500">{p.cedula}</span></td>
-                  <td className="p-4 text-slate-400">${p.montoPrincipal} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
+                  <td className="p-4 text-slate-400">${formatCOP(p.montoPrincipal)} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
                   <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro}</td>
-                  <td className="p-4 text-indigo-600 font-bold">${p.saldoPendiente}</td>
+                  <td className="p-4 text-indigo-600 font-bold">${formatCOP(p.saldoPendiente)}</td>
                   <td className="p-4 flex flex-wrap items-center gap-2">
                     {(() => {
                       const cobroInfo = getEstadoCobro(p);
@@ -551,4 +550,4 @@ const Prestamos = () => {
   );
 };
 
-export default Prestamos;
+export default Creditos;

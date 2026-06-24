@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar';
 import ConstellationBackground from './components/ConstellationBackground';
 import Dashboard from './pages/Dashboard';
 import Prestamos from './pages/Prestamos';
+import Creditos from './pages/Creditos';
 import Productos from './pages/Productos';
 import Clientes from './pages/Clientes';
 import Ventas from './pages/Ventas';
@@ -38,6 +39,7 @@ function App() {
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/clientes" element={<Clientes />} />
                     <Route path="/prestamos" element={<Prestamos />} />
+                    <Route path="/creditos" element={<Creditos />} />
                     <Route path="/productos" element={<Productos />} />
                     <Route path="/ventas" element={<Ventas />} />
                     <Route path="/gastos" element={<Gastos />} />
