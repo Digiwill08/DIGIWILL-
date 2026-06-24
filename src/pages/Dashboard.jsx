@@ -86,11 +86,9 @@ const Dashboard = () => {
           sG3.docs.forEach(doc => mapG.set(doc.id, doc.data()));
 
           mapP.forEach(data => {
-            if (data.ventaId) {
-              prestamosCount++;
-              saldoTotal += Number(data.saldoPendiente || 0);
-              clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
-            }
+            prestamosCount++;
+            saldoTotal += Number(data.saldoPendiente || 0);
+            clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
           });
 
           mapPr.forEach(data => {
@@ -140,7 +138,7 @@ const Dashboard = () => {
 
           snapPrestamos.forEach(doc => {
             const data = doc.data();
-            if (filterFn(data) && data.ventaId) {
+            if (filterFn(data)) {
               prestamosCount++;
               saldoTotal += Number(data.saldoPendiente || 0);
               clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);

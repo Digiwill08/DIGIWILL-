@@ -44,6 +44,16 @@ const Sidebar = () => {
         
         {!isVendor && (
           <NavLink 
+            to="/prestamos" 
+            className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
+          >
+            <WalletCards size={20} />
+            <span>Préstamos WILL</span>
+          </NavLink>
+        )}
+
+        {!isVendor && (
+          <NavLink 
             to="/creditos" 
             className={({isActive}) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${isActive ? 'bg-indigo-600/20 text-indigo-300 neon-border font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-indigo-200'}`}
           >

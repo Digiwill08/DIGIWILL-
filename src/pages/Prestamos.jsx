@@ -407,6 +407,12 @@ const Prestamos = () => {
                 <label className="block text-sm font-medium text-slate-300 mb-1">Tasa de Interés (%)</label>
                 <input required type="number" name="tasaInteres" value={formData.tasaInteres} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none" />
               </div>
+              {(formData.montoPrincipal && formData.tasaInteres) && (
+                <div className="md:col-span-2 text-sm bg-indigo-950/20 border border-indigo-900/40 p-3 rounded-lg flex justify-between">
+                  <span>Valor del Interés: <strong className="text-indigo-400">${formatCOP(Number(formData.montoPrincipal) * (Number(formData.tasaInteres) / 100))}</strong></span>
+                  <span>Total a Cobrar: <strong className="text-emerald-400">${formatCOP(Number(formData.montoPrincipal) * (1 + Number(formData.tasaInteres) / 100))}</strong></span>
+                </div>
+              )}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia de Cobro</label>
                 <select name="frecuenciaCobro" value={formData.frecuenciaCobro} onChange={handleChange} className="w-full border border-transparent rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 outline-none glass-panel">
@@ -511,9 +517,9 @@ const Prestamos = () => {
               prestamos.map(p => (
                 <tr key={p.id} className="border-b border-none hover:bg-transparent">
                   <td className="p-4 font-medium text-slate-100">{p.nombreCompleto} <br/><span className="text-xs text-slate-500">{p.cedula}</span></td>
-                  <td className="p-4 text-slate-400">${p.montoPrincipal} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
+                  <td className="p-4 text-slate-400">${formatCOP(p.montoPrincipal)} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés (${formatCOP(p.montoPrincipal * (p.tasaInteres / 100))})</span></td>
                   <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro}</td>
-                  <td className="p-4 text-indigo-600 font-bold">${p.saldoPendiente}</td>
+                  <td className="p-4 text-indigo-600 font-bold">${formatCOP(p.saldoPendiente)}</td>
                   <td className="p-4 flex flex-wrap items-center gap-2">
                     {(() => {
                       const cobroInfo = getEstadoCobro(p);

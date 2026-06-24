@@ -510,7 +510,7 @@ const Creditos = () => {
               prestamosFiltrados.map(p => (
                 <tr key={p.id} className="border-b border-none hover:bg-transparent">
                   <td className="p-4 font-medium text-slate-100">{p.nombreCompleto} <br/><span className="text-xs text-slate-500">{p.cedula}</span></td>
-                  <td className="p-4 text-slate-400">${formatCOP(p.montoPrincipal)} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés</span></td>
+                  <td className="p-4 text-slate-400">${formatCOP(p.montoPrincipal)} <br/><span className="text-xs text-slate-500">{p.tasaInteres}% interés (${formatCOP(p.montoPrincipal * (p.tasaInteres / 100))})</span></td>
                   <td className="p-4 text-slate-400 capitalize">{p.frecuenciaCobro}</td>
                   <td className="p-4 text-indigo-600 font-bold">${formatCOP(p.saldoPendiente)}</td>
                   <td className="p-4 flex flex-wrap items-center gap-2">

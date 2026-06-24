@@ -42,7 +42,7 @@ const Clientes = () => {
       ]);
 
       const clientVentas = snapVentas.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const clientPrestamos = snapPrestamos.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(p => !!p.ventaId);
+      const clientPrestamos = snapPrestamos.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       clientVentas.sort((a, b) => {
         const tA = a.fechaVenta?.toMillis ? a.fechaVenta.toMillis() : (a.fechaVenta ? new Date(a.fechaVenta).getTime() : 0);
@@ -571,7 +571,7 @@ const Clientes = () => {
                     onClick={() => setCrmActiveTab('prestamos')}
                     className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${crmActiveTab === 'prestamos' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
                   >
-                    Créditos/Financiación ({crmData.prestamos.length})
+                    Préstamos/Financiación ({crmData.prestamos.length})
                   </button>
                   <button
                     onClick={() => setCrmActiveTab('pagos')}
@@ -620,7 +620,7 @@ const Clientes = () => {
                   {crmActiveTab === 'prestamos' && (
                     <div className="space-y-3">
                       {crmData.prestamos.length === 0 ? (
-                        <p className="text-slate-500 text-center py-10 text-sm">Este cliente no registra deudas ni ventas a crédito.</p>
+                        <p className="text-slate-500 text-center py-10 text-sm">Este cliente no registra préstamos ni créditos.</p>
                       ) : (
                         crmData.prestamos.map(p => {
                           const date = p.fechaInicio ? new Date(p.fechaInicio.toDate()).toLocaleDateString() : 'Reciente';
@@ -634,8 +634,8 @@ const Clientes = () => {
                                   <span className="text-xs text-slate-500 flex items-center gap-1"><Calendar size={12}/> {date}</span>
                                 </div>
                                 <p className="text-sm text-slate-300">
-                                  Valor Financiado: <strong className="text-slate-100">${formatCOP(p.montoPrincipal)}</strong>
-                                  <span className="text-xs text-slate-500 ml-2">({p.tasaInteres}% interés • Frecuencia: {p.frecuenciaCobro})</span>
+                                  Monto Principal: <strong className="text-slate-100">${formatCOP(p.montoPrincipal)}</strong>
+                                  <span className="text-xs text-slate-500 ml-2">({p.tasaInteres}% interés (${formatCOP(p.montoPrincipal * (p.tasaInteres / 100))}) • Frecuencia: {p.frecuenciaCobro})</span>
                                 </p>
                               </div>
                               <div className="flex flex-col md:items-end justify-center">
@@ -662,7 +662,7 @@ const Clientes = () => {
                               <div>
                                 <p className="text-xs text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={12}/> {date}</p>
                                 <p className="text-sm text-slate-200">
-                                  Abono para venta financiada de: <span className="text-indigo-400 font-semibold">${formatCOP(matchingLoan?.montoPrincipal || 0)}</span>
+                                  Abono para deuda de: <span className="text-indigo-400 font-semibold">${formatCOP(matchingLoan?.montoPrincipal || 0)}</span>
                                 </p>
                               </div>
                               <span className="font-bold text-emerald-400 text-md">+ ${formatCOP(pago.montoAbonado)}</span>

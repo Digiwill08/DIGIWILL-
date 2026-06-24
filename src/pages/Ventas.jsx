@@ -484,21 +484,29 @@ const Ventas = () => {
               </select>
               
               {tipoVenta === 'financiada' && (
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Interés (%)</label>
-                    <input required type="number" min="0" value={tasaInteres} onChange={(e) => setTasaInteres(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none" />
+                <>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-1">Interés (%)</label>
+                      <input required type="number" min="0" value={tasaInteres} onChange={(e) => setTasaInteres(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia</label>
+                      <select value={frecuenciaCobro} onChange={(e) => setFrecuenciaCobro(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none glass-panel">
+                        <option value="diario">Diario</option>
+                        <option value="semanal">Semanal</option>
+                        <option value="quincenal">Quincenal</option>
+                        <option value="mensual">Mensual</option>
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Frecuencia</label>
-                    <select value={frecuenciaCobro} onChange={(e) => setFrecuenciaCobro(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none glass-panel">
-                      <option value="diario">Diario</option>
-                      <option value="semanal">Semanal</option>
-                      <option value="quincenal">Quincenal</option>
-                      <option value="mensual">Mensual</option>
-                    </select>
-                  </div>
-                </div>
+                  {(totalCarrito > 0 && tasaInteres) && (
+                    <div className="text-sm bg-indigo-950/20 border border-indigo-900/40 p-3 rounded-lg flex justify-between mb-4">
+                      <span>Valor del Interés: <strong className="text-indigo-400">${formatCOP(totalCarrito * (Number(tasaInteres) / 100))}</strong></span>
+                      <span>Total a Cobrar: <strong className="text-emerald-400">${formatCOP(totalCarrito * (1 + Number(tasaInteres) / 100))}</strong></span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
