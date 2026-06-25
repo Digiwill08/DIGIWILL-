@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, doc, updateDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Trash2, Plus, Download, MessageCircle, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../utils/auditLogger';
+import { formatCOP } from '../utils/format';
 
 const Ventas = () => {
   const { currentUser } = useAuth();
@@ -137,11 +138,11 @@ const Ventas = () => {
     const cleanPhone = phone.replace(/\D/g, '');
     const formattedPhone = cleanPhone.length === 10 ? `57${cleanPhone}` : cleanPhone;
 
-    const articulosStr = v.detalles.map(d => `• ${d.cantidad}x ${d.nombre} ($${d.precioUnitario})`).join('\n');
+    const articulosStr = v.detalles.map(d => `• ${d.cantidad}x ${d.nombre} ($${formatCOP(d.precioUnitario)})`).join('\n');
     const message = `Hola *${v.clienteNombre}*, ¡gracias por tu compra en DIGIWILL! 🛍️\n\n` +
                     `Detalle de tu compra:\n` +
                     `${articulosStr}\n\n` +
-                    `• Total: *$${v.total}*\n` +
+                    `• Total: *$${formatCOP(v.total)}*\n` +
                     `• Tipo de pago: *${v.tipoVenta === 'financiada' ? 'Crédito' : 'Contado'}*\n\n` +
                     `Cualquier duda o comentario, estamos a tu disposición. ✨`;
 
@@ -156,7 +157,7 @@ const Ventas = () => {
     const articulosHtml = v.detalles.map(d => `
       <tr>
         <td style="padding: 4px 0; text-align: left;">${d.cantidad}x ${d.nombre}</td>
-        <td style="padding: 4px 0; text-align: right;">$${(d.cantidad * d.precioUnitario).toLocaleString()}</td>
+        <td style="padding: 4px 0; text-align: right;">$${formatCOP(d.cantidad * d.precioUnitario)}</td>
       </tr>
     `).join('');
 
@@ -222,7 +223,7 @@ const Ventas = () => {
           <table class="totals">
             <tr>
               <td style="text-align: left;">TOTAL:</td>
-              <td style="text-align: right;">$${v.total.toLocaleString()}</td>
+              <td style="text-align: right;">$${formatCOP(v.total)}</td>
             </tr>
             <tr>
               <td style="text-align: left; font-size: 9px; font-weight: normal;">Método:</td>
@@ -276,6 +277,66 @@ const Ventas = () => {
     document.body.removeChild(link);
   };
 
+  const handleEliminarVenta = async (v) => {
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar la venta del cliente "${v.clienteNombre}" por un total de $${formatCOP(v.total)}? Esta acción devolverá el stock de los productos.`)) return;
+    
+    setLoading(true);
+    try {
+      // 1. Devolver Stock de los productos y registrar entrada en Kardex
+      for (const item of v.detalles) {
+        const prodRef = doc(db, 'productos', item.productoId);
+        const prodSnap = await getDoc(prodRef);
+        if (prodSnap.exists()) {
+          const currentStock = prodSnap.data().stock || 0;
+          await updateDoc(prodRef, {
+            stock: currentStock + item.cantidad
+          });
+        }
+
+        // Registrar en Kardex
+        await addDoc(collection(db, 'kardex'), {
+          productoId: item.productoId,
+          productoNombre: item.nombre,
+          tipo: 'entrada',
+          cantidad: item.cantidad,
+          detalle: `Cancelación/Eliminación de Venta a cliente ${v.clienteNombre}`,
+          fecha: serverTimestamp(),
+          created_by: currentUser.uid,
+          userId: currentUser.uid,
+          userEmail: currentUser.email
+        });
+      }
+
+      // 2. Si es financiada, eliminar préstamo y abonos asociados
+      if (v.tipoVenta === 'financiada') {
+        const qP = query(collection(db, 'prestamos'), where('ventaId', '==', v.id));
+        const snapP = await getDocs(qP);
+        for (const docP of snapP.docs) {
+          const qPagos = query(collection(db, 'pagos'), where('prestamoId', '==', docP.id));
+          const snapPagos = await getDocs(qPagos);
+          for (const docPago of snapPagos.docs) {
+            await deleteDoc(doc(db, 'pagos', docPago.id));
+          }
+          await deleteDoc(doc(db, 'prestamos', docP.id));
+        }
+      }
+
+      // 3. Eliminar la venta
+      await deleteDoc(doc(db, 'ventas', v.id));
+
+      // 4. Auditoría
+      await logActivity(currentUser, 'eliminacion_venta', `Eliminó la venta #${v.id.substring(0, 8)} del cliente "${v.clienteNombre}" por un total de $${v.total}`, 'ventas', v.id);
+
+      alert('Venta eliminada con éxito. El stock de los productos ha sido restaurado.');
+      fetchData();
+    } catch (err) {
+      console.error("Error al eliminar la venta:", err);
+      alert('Hubo un error al eliminar la venta. Verifica tus permisos o conexión.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (currentUser) {
       fetchData();
@@ -307,7 +368,8 @@ const Ventas = () => {
         nombre: prod.nombre,
         precioUnitario: prod.valorVenta,
         cantidad: cant,
-        subtotal: cant * prod.valorVenta
+        subtotal: cant * prod.valorVenta,
+        imagen: prod.imagen || ''
       }]);
     }
     
@@ -520,16 +582,21 @@ const Ventas = () => {
                   onChange={(e) => setSearchTerm(e.target.value)} 
                   className="w-full border border-transparent rounded-lg p-2.5 outline-none"
                 />
-                <div className="flex gap-2">
-                  <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="flex-1 border border-transparent rounded-lg p-2.5 outline-none glass-panel">
+                <div className="flex flex-col gap-2">
+                  <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none glass-panel">
                     <option value="">-- Seleccionar ({productos.filter(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase()))).length} encontrados) --</option>
                     {productos
                       .filter(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase())))
-                      .map(p => <option key={p.id} value={p.id}>{p.nombre} (${p.valorVenta} - Stock: {p.stock})</option>)
+                      .map(p => <option key={p.id} value={p.id}>{p.nombre} (${formatCOP(p.valorVenta)} - Stock: {p.stock})</option>)
                     }
                   </select>
-                  <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-20 border border-transparent rounded-lg p-2.5 outline-none text-center" />
-                  <button type="button" onClick={agregarAlCarrito} className="bg-gray-800 text-white p-2.5 rounded-lg hover:bg-gray-900"><Plus size={20}/></button>
+                  <div className="flex gap-2">
+                    <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="flex-1 border border-transparent rounded-lg p-2.5 outline-none text-center" />
+                    <button type="button" onClick={agregarAlCarrito} className="bg-gray-800 text-white px-4 py-2.5 rounded-lg hover:bg-gray-900 flex items-center justify-center gap-1.5 font-semibold transition-colors shrink-0">
+                      <Plus size={16}/>
+                      Agregar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -542,12 +609,19 @@ const Ventas = () => {
               {carrito.length === 0 ? <p className="text-sm text-slate-600 text-center">Carrito vacío</p> : 
                 carrito.map(item => (
                   <div key={item.productoId} className="flex justify-between items-center glass-panel p-2 rounded text-sm">
-                    <div>
-                      <p className="font-medium">{item.nombre}</p>
-                      <p className="text-slate-500">{item.cantidad} x ${item.precioUnitario}</p>
+                    <div className="flex items-center gap-3">
+                      {item.imagen ? (
+                        <img src={item.imagen} alt={item.nombre} className="w-10 h-10 rounded-lg object-cover border border-indigo-500/20 shadow-md shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700/50 flex items-center justify-center text-slate-500 text-xs shrink-0 font-bold">📦</div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-medium truncate max-w-[120px]">{item.nombre}</p>
+                        <p className="text-slate-500 text-xs">{item.cantidad} x ${formatCOP(item.precioUnitario)}</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold">${item.subtotal}</span>
+                      <span className="font-bold">${formatCOP(item.subtotal)}</span>
                       <button onClick={() => eliminarDelCarrito(item.productoId)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
                     </div>
                   </div>
@@ -556,7 +630,7 @@ const Ventas = () => {
             </div>
             <div className="border-t border-transparent pt-4 mb-4 flex justify-between items-center text-lg font-bold">
               <span>Total:</span>
-              <span className="text-indigo-600">${totalCarrito}</span>
+              <span className="text-indigo-600">${formatCOP(totalCarrito)}</span>
             </div>
             <button 
               onClick={handleSubmit} 
@@ -597,7 +671,7 @@ const Ventas = () => {
                   <td className="p-4 text-slate-400 text-sm">
                     {v.detalles.map((d, i) => <div key={i}>{d.cantidad}x {d.nombre}</div>)}
                   </td>
-                  <td className="p-4 text-emerald-600 font-bold">${v.total}</td>
+                  <td className="p-4 text-emerald-600 font-bold">${formatCOP(v.total)}</td>
                   <td className="p-4 flex flex-wrap items-center gap-2">
                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${v.tipoVenta === 'financiada' ? 'bg-orange-600/20 text-orange-300 border border-orange-500/30' : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'}`}>
                       {v.tipoVenta === 'financiada' ? 'Crédito' : 'Contado'}
@@ -617,6 +691,14 @@ const Ventas = () => {
                     >
                       <Printer size={12} />
                       Ticket
+                    </button>
+                    <button 
+                      onClick={() => handleEliminarVenta(v)} 
+                      className="text-xs bg-rose-600/20 text-rose-300 hover:bg-rose-600/40 border border-rose-500/30 p-1.5 rounded-lg transition-colors flex items-center gap-1"
+                      title="Eliminar Venta"
+                    >
+                      <Trash2 size={12} />
+                      Eliminar
                     </button>
                   </td>
                 </tr>
