@@ -8,7 +8,9 @@ const Dashboard = () => {
   const { currentUser } = useAuth();
   const [metricas, setMetricas] = useState({
     prestamosActivos: 0,
-    saldoPendienteTotal: 0,
+    saldoPendientePrestamos: 0,
+    creditosActivos: 0,
+    saldoPendienteCreditos: 0,
     productosTotal: 0,
     valorInventario: 0,
     ventasTotal: 0,
@@ -30,18 +32,21 @@ const Dashboard = () => {
         const isVendor = isLizz || isEstefania;
         
         let prestamosCount = 0;
-        let saldoTotal = 0;
+        let saldoPrestamos = 0;
+        let creditosCount = 0;
+        let saldoCreditos = 0;
         let productosCount = 0;
         let valorInv = 0;
         let ventasTotal = 0;
         let egresosTotal = 0;
         let productsData = [];
+        let creditosStatusData = { alDia: 0, porVencer: 0, enMora: 0 };
+        let prestamosStatusData = { alDia: 0, porVencer: 0, enMora: 0 };
 
         const productSalesCount = {};
         const clientDebts = {};
 
         if (isVendor) {
-          // Vendedoras: Consultar de forma segura usando cláusulas 'where' para cumplir las reglas de Firestore
           const qP1 = query(collection(db, 'prestamos'), where('estado', '==', 'activo'), where('created_by', '==', currentUser.uid));
           const qP2 = query(collection(db, 'prestamos'), where('estado', '==', 'activo'), where('userId', '==', currentUser.uid));
           const qP3 = query(collection(db, 'prestamos'), where('estado', '==', 'activo'), where('vendedor', '==', currentUser.email));
@@ -86,9 +91,25 @@ const Dashboard = () => {
           sG3.docs.forEach(doc => mapG.set(doc.id, doc.data()));
 
           mapP.forEach(data => {
-            prestamosCount++;
-            saldoTotal += Number(data.saldoPendiente || 0);
+            if (data.ventaId) {
+              creditosCount++;
+              saldoCreditos += Number(data.saldoPendiente || 0);
+            } else {
+              prestamosCount++;
+              saldoPrestamos += Number(data.saldoPendiente || 0);
+            }
             clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
+            
+            const status = getLoanStatus(data);
+            if (data.ventaId) {
+              if (status === 'enMora') creditosStatusData.enMora++;
+              else if (status === 'porVencer') creditosStatusData.porVencer++;
+              else creditosStatusData.alDia++;
+            } else {
+              if (status === 'enMora') prestamosStatusData.enMora++;
+              else if (status === 'porVencer') prestamosStatusData.porVencer++;
+              else prestamosStatusData.alDia++;
+            }
           });
 
           mapPr.forEach(data => {
@@ -110,7 +131,6 @@ const Dashboard = () => {
             egresosTotal += Number(data.monto || 0);
           });
         } else {
-          // Administrador: Puede consultar la colección completa sin problemas
           const [snapPrestamos, snapProductos, snapVentas, snapGastos] = await Promise.all([
             getDocs(query(collection(db, 'prestamos'), where('estado', '==', 'activo'))),
             getDocs(collection(db, 'productos')),
@@ -139,9 +159,25 @@ const Dashboard = () => {
           snapPrestamos.forEach(doc => {
             const data = doc.data();
             if (filterFn(data)) {
-              prestamosCount++;
-              saldoTotal += Number(data.saldoPendiente || 0);
+              if (data.ventaId) {
+                creditosCount++;
+                saldoCreditos += Number(data.saldoPendiente || 0);
+              } else {
+                prestamosCount++;
+                saldoPrestamos += Number(data.saldoPendiente || 0);
+              }
               clientDebts[data.nombreCompleto] = (clientDebts[data.nombreCompleto] || 0) + Number(data.saldoPendiente || 0);
+              
+              const status = getLoanStatus(data);
+              if (data.ventaId) {
+                if (status === 'enMora') creditosStatusData.enMora++;
+                else if (status === 'porVencer') creditosStatusData.porVencer++;
+                else creditosStatusData.alDia++;
+              } else {
+                if (status === 'enMora') prestamosStatusData.enMora++;
+                else if (status === 'porVencer') prestamosStatusData.porVencer++;
+                else prestamosStatusData.alDia++;
+              }
             }
           });
 
@@ -174,7 +210,6 @@ const Dashboard = () => {
           });
         }
 
-        // Calcular producto estrella
         let maxSales = 0;
         let prodEstrellaNombre = 'Ninguno';
         for (const name in productSalesCount) {
@@ -185,7 +220,6 @@ const Dashboard = () => {
         }
         setProductoEstrella({ nombre: prodEstrellaNombre, cantidad: maxSales });
 
-        // Calcular top deudores
         const debtorsList = Object.keys(clientDebts)
           .map(name => ({ name, debt: clientDebts[name] }))
           .sort((a, b) => b.debt - a.debt)
@@ -194,14 +228,16 @@ const Dashboard = () => {
 
         setMetricas({
           prestamosActivos: prestamosCount,
-          saldoPendienteTotal: saldoTotal,
+          saldoPendientePrestamos: saldoPrestamos,
+          creditosActivos: creditosCount,
+          saldoPendienteCreditos: saldoCreditos,
           productosTotal: productosCount,
           valorInventario: valorInv,
           ventasTotal: ventasTotal,
           egresosTotal: egresosTotal
         });
 
-        // Filtrar productos con stock bajo (3 o menos)
+        setPrestamosStatus(creditosStatusData);
         setLowStockProducts(productsData.filter(p => p.stock <= 3));
 
       } catch (error) {
@@ -259,41 +295,53 @@ const Dashboard = () => {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         
-        {/* Card: Préstamos */}
-        <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
-          <div className="p-3 bg-indigo-900/50 text-indigo-400 rounded-lg neon-border">
-            <Wallet size={24} />
+        {/* Card: Préstamos WILL */}
+        <div className="glass-panel p-5 rounded-xl flex items-start gap-3">
+          <div className="p-2.5 bg-rose-900/40 text-rose-400 rounded-lg shrink-0 border border-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.15)]">
+            <Wallet size={20} />
           </div>
           <div>
-            <h3 className="text-slate-400 text-sm font-medium">Créditos Activos ({metricas.prestamosActivos})</h3>
-            <p className="text-3xl font-bold text-indigo-300 mt-1 neon-text">${metricas.saldoPendienteTotal.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">Saldo pendiente en la calle</p>
+            <h3 className="text-slate-400 text-[11px] font-medium leading-none">Préstamos WILL ({metricas.prestamosActivos})</h3>
+            <p className="text-xl font-bold text-rose-300 mt-1 neon-text-purple">${formatCOP(metricas.saldoPendientePrestamos)}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Saldo efectivo pendiente</p>
+          </div>
+        </div>
+
+        {/* Card: Créditos de Ventas */}
+        <div className="glass-panel p-5 rounded-xl flex items-start gap-3">
+          <div className="p-2.5 bg-indigo-900/50 text-indigo-400 rounded-lg shrink-0 neon-border">
+            <Wallet size={20} />
+          </div>
+          <div>
+            <h3 className="text-slate-400 text-[11px] font-medium leading-none">Créditos Ventas ({metricas.creditosActivos})</h3>
+            <p className="text-xl font-bold text-indigo-300 mt-1 neon-text">${formatCOP(metricas.saldoPendienteCreditos)}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Saldo ventas financiado</p>
           </div>
         </div>
 
         {/* Card: Inventario */}
-        <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
-          <div className="p-3 bg-emerald-900/50 text-emerald-400 rounded-lg border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
-            <Package size={24} />
+        <div className="glass-panel p-5 rounded-xl flex items-start gap-3">
+          <div className="p-2.5 bg-emerald-900/50 text-emerald-400 rounded-lg shrink-0 border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+            <Package size={20} />
           </div>
           <div>
-            <h3 className="text-slate-400 text-sm font-medium">Productos en Stock ({metricas.productosTotal})</h3>
-            <p className="text-3xl font-bold text-emerald-300 mt-1 neon-text-emerald">${metricas.valorInventario.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">Valor estimado del inventario</p>
+            <h3 className="text-slate-400 text-[11px] font-medium leading-none">Stock Productos ({metricas.productosTotal})</h3>
+            <p className="text-xl font-bold text-emerald-300 mt-1 neon-text-emerald">${formatCOP(metricas.valorInventario)}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Valor del inventario</p>
           </div>
         </div>
 
         {/* Card: Ventas / Ingresos */}
-        <div className="glass-panel p-6 rounded-xl flex items-start gap-4">
-          <div className="p-3 bg-blue-900/50 text-blue-400 rounded-lg border border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.3)]">
-            <TrendingUp size={24} />
+        <div className="glass-panel p-5 rounded-xl flex items-start gap-3">
+          <div className="p-2.5 bg-blue-900/50 text-blue-400 rounded-lg shrink-0 border border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.3)]">
+            <TrendingUp size={20} />
           </div>
           <div>
-            <h3 className="text-slate-400 text-sm font-medium">Ingresos por Ventas</h3>
-            <p className="text-3xl font-bold text-blue-300 mt-1 text-shadow-[0_0_10px_rgba(59,130,246,0.8)]">${metricas.ventasTotal.toLocaleString()}</p>
-            <p className="text-xs text-slate-500 mt-1">Total acumulado</p>
+            <h3 className="text-slate-400 text-[11px] font-medium leading-none">Ingresos por Ventas</h3>
+            <p className="text-xl font-bold text-blue-300 mt-1 text-shadow-[0_0_10px_rgba(59,130,246,0.8)]">${formatCOP(metricas.ventasTotal)}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Total de contado acumulado</p>
           </div>
         </div>
 

@@ -17,14 +17,16 @@ const Clientes = () => {
   // CRM State
   const [crmModalOpen, setCrmModalOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
-  const [crmActiveTab, setCrmActiveTab] = useState('ventas'); // 'ventas', 'prestamos', 'pagos'
+  const [crmActiveTab, setCrmActiveTab] = useState('ventas'); // 'ventas', 'creditos', 'prestamos', 'pagos'
   const [crmData, setCrmData] = useState({
     loading: false,
     ventas: [],
+    creditos: [],
     prestamos: [],
     pagos: [],
     totalComprado: 0,
-    saldoPendiente: 0,
+    saldoPendientePrestamos: 0,
+    saldoPendienteCreditos: 0,
     totalAbonado: 0
   });
 
@@ -78,18 +80,29 @@ const Clientes = () => {
       });
 
       const totalComprado = clientVentas.reduce((sum, v) => sum + Number(v.total || 0), 0);
-      const saldoPendiente = clientPrestamos
+      
+      const clientCreditos = clientPrestamos.filter(p => !!p.ventaId);
+      const clientLoans = clientPrestamos.filter(p => !p.ventaId);
+
+      const saldoPendientePrestamos = clientLoans
         .filter(p => p.estado === 'activo')
         .reduce((sum, p) => sum + Number(p.saldoPendiente || 0), 0);
+
+      const saldoPendienteCreditos = clientCreditos
+        .filter(p => p.estado === 'activo')
+        .reduce((sum, p) => sum + Number(p.saldoPendiente || 0), 0);
+
       const totalAbonado = clientPagos.reduce((sum, p) => sum + Number(p.montoAbonado || 0), 0);
 
       setCrmData({
         loading: false,
         ventas: clientVentas,
-        prestamos: clientPrestamos,
+        creditos: clientCreditos,
+        prestamos: clientLoans,
         pagos: clientPagos,
         totalComprado,
-        saldoPendiente,
+        saldoPendientePrestamos,
+        saldoPendienteCreditos,
         totalAbonado
       });
     } catch (err) {
@@ -535,32 +548,39 @@ const Clientes = () => {
               <div className="flex-1 flex flex-col min-h-0">
                 
                 {/* Metric cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <div className="bg-indigo-950/20 border border-indigo-900/40 p-4 rounded-xl flex items-center gap-4">
-                    <div className="p-3 rounded-lg bg-indigo-600/20 text-indigo-300"><DollarSign size={20}/></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-indigo-950/20 border border-indigo-900/40 p-4 rounded-xl flex items-center gap-3">
+                    <div className="p-2.5 rounded-lg bg-indigo-600/20 text-indigo-300 shrink-0"><DollarSign size={18}/></div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-400">Total Comprado (Contado)</p>
-                      <h4 className="text-lg font-bold text-slate-100">${formatCOP(crmData.totalComprado)}</h4>
+                      <p className="text-[10px] font-semibold text-slate-400">Total Comprado (Ventas)</p>
+                      <h4 className="text-base font-bold text-slate-100">${formatCOP(crmData.totalComprado)}</h4>
                     </div>
                   </div>
-                  <div className="bg-rose-950/10 border border-rose-900/30 p-4 rounded-xl flex items-center gap-4">
-                    <div className="p-3 rounded-lg bg-rose-600/20 text-rose-300"><Wallet size={20}/></div>
+                  <div className="bg-orange-950/15 border border-orange-900/35 p-4 rounded-xl flex items-center gap-3">
+                    <div className="p-2.5 rounded-lg bg-orange-600/20 text-orange-300 shrink-0"><Wallet size={18}/></div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-400">Saldo Pendiente (Ventas a Crédito)</p>
-                      <h4 className="text-lg font-bold text-rose-400">${formatCOP(crmData.saldoPendiente)}</h4>
+                      <p className="text-[10px] font-semibold text-slate-400">Saldo Pendiente (Créditos)</p>
+                      <h4 className="text-base font-bold text-orange-400">${formatCOP(crmData.saldoPendienteCreditos)}</h4>
                     </div>
                   </div>
-                  <div className="bg-emerald-950/10 border border-emerald-900/30 p-4 rounded-xl flex items-center gap-4">
-                    <div className="p-3 rounded-lg bg-emerald-600/20 text-emerald-300"><Award size={20}/></div>
+                  <div className="bg-rose-950/10 border border-rose-900/30 p-4 rounded-xl flex items-center gap-3">
+                    <div className="p-2.5 rounded-lg bg-rose-600/20 text-rose-300 shrink-0"><Wallet size={18}/></div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-400">Total Abonado a Créditos</p>
-                      <h4 className="text-lg font-bold text-emerald-400">${formatCOP(crmData.totalAbonado)}</h4>
+                      <p className="text-[10px] font-semibold text-slate-400">Saldo Pendiente (Préstamos)</p>
+                      <h4 className="text-base font-bold text-rose-400">${formatCOP(crmData.saldoPendientePrestamos)}</h4>
+                    </div>
+                  </div>
+                  <div className="bg-emerald-950/10 border border-emerald-900/30 p-4 rounded-xl flex items-center gap-3">
+                    <div className="p-2.5 rounded-lg bg-emerald-600/20 text-emerald-300 shrink-0"><Award size={18}/></div>
+                    <div>
+                      <p className="text-[10px] font-semibold text-slate-400">Total Abonado (Deuda)</p>
+                      <h4 className="text-base font-bold text-emerald-400">${formatCOP(crmData.totalAbonado)}</h4>
                     </div>
                   </div>
                 </div>
 
                 {/* Navigation Tabs */}
-                <div className="flex border-b border-indigo-950/50 mb-4 gap-2">
+                <div className="flex border-b border-indigo-950/50 mb-4 gap-2 flex-wrap">
                   <button
                     onClick={() => setCrmActiveTab('ventas')}
                     className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${crmActiveTab === 'ventas' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
@@ -568,10 +588,16 @@ const Clientes = () => {
                     Compras ({crmData.ventas.length})
                   </button>
                   <button
+                    onClick={() => setCrmActiveTab('creditos')}
+                    className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${crmActiveTab === 'creditos' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Créditos de Ventas ({crmData.creditos.length})
+                  </button>
+                  <button
                     onClick={() => setCrmActiveTab('prestamos')}
                     className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${crmActiveTab === 'prestamos' ? 'border-emerald-500 text-emerald-300' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
                   >
-                    Préstamos/Financiación ({crmData.prestamos.length})
+                    Préstamos WILL ({crmData.prestamos.length})
                   </button>
                   <button
                     onClick={() => setCrmActiveTab('pagos')}
@@ -617,10 +643,42 @@ const Clientes = () => {
                     </div>
                   )}
 
+                  {crmActiveTab === 'creditos' && (
+                    <div className="space-y-3">
+                      {crmData.creditos.length === 0 ? (
+                        <p className="text-slate-500 text-center py-10 text-sm">Este cliente no registra créditos de ventas.</p>
+                      ) : (
+                        crmData.creditos.map(p => {
+                          const date = p.fechaInicio ? new Date(p.fechaInicio.toDate()).toLocaleDateString() : 'Reciente';
+                          return (
+                            <div key={p.id} className="glass-panel p-4 rounded-xl border border-indigo-900/10 flex flex-col md:flex-row justify-between gap-4">
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className={`text-xs px-2 py-0.5 rounded font-semibold ${p.estado === 'activo' ? 'bg-amber-600/20 text-amber-300 border border-amber-500/20' : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/20'}`}>
+                                    {p.estado === 'activo' ? 'Activo' : 'Pagado'}
+                                  </span>
+                                  <span className="text-xs text-slate-500 flex items-center gap-1"><Calendar size={12}/> {date}</span>
+                                </div>
+                                <p className="text-sm text-slate-300">
+                                  Monto Principal: <strong className="text-slate-100">${formatCOP(p.montoPrincipal)}</strong>
+                                  <span className="text-xs text-slate-500 ml-2">({p.tasaInteres}% interés (${formatCOP(p.montoPrincipal * (p.tasaInteres / 100))}) • Frecuencia: {p.frecuenciaCobro})</span>
+                                </p>
+                              </div>
+                              <div className="flex flex-col md:items-end justify-center">
+                                <p className="text-xs text-slate-400">Saldo Pendiente</p>
+                                <span className="font-bold text-rose-400 text-lg">${formatCOP(p.saldoPendiente)}</span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+
                   {crmActiveTab === 'prestamos' && (
                     <div className="space-y-3">
                       {crmData.prestamos.length === 0 ? (
-                        <p className="text-slate-500 text-center py-10 text-sm">Este cliente no registra préstamos ni créditos.</p>
+                        <p className="text-slate-500 text-center py-10 text-sm">Este cliente no registra préstamos de efectivo.</p>
                       ) : (
                         crmData.prestamos.map(p => {
                           const date = p.fechaInicio ? new Date(p.fechaInicio.toDate()).toLocaleDateString() : 'Reciente';
@@ -656,13 +714,15 @@ const Clientes = () => {
                       ) : (
                         crmData.pagos.map(pago => {
                           const date = pago.fechaPago ? new Date(pago.fechaPago.toDate()).toLocaleString() : 'Reciente';
-                          const matchingLoan = crmData.prestamos.find(pr => pr.id === pago.prestamoId);
+                          const matchingItem = crmData.prestamos.find(pr => pr.id === pago.prestamoId) || 
+                                               crmData.creditos.find(cr => cr.id === pago.prestamoId);
+                          const tipoLabel = matchingItem?.ventaId ? 'Crédito de Venta' : 'Préstamo WILL';
                           return (
                             <div key={pago.id} className="glass-panel p-3 rounded-xl border border-indigo-900/10 flex justify-between items-center">
                               <div>
                                 <p className="text-xs text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={12}/> {date}</p>
                                 <p className="text-sm text-slate-200">
-                                  Abono para deuda de: <span className="text-indigo-400 font-semibold">${formatCOP(matchingLoan?.montoPrincipal || 0)}</span>
+                                  Abono para <span className="text-indigo-400 font-semibold">{tipoLabel}</span> de: <span className="text-indigo-400 font-semibold">${formatCOP(matchingItem?.montoPrincipal || 0)}</span>
                                 </p>
                               </div>
                               <span className="font-bold text-emerald-400 text-md">+ ${formatCOP(pago.montoAbonado)}</span>
