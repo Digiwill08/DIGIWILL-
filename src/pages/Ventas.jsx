@@ -528,7 +528,7 @@ const Ventas = () => {
       {showForm && (
         <div className="glass-panel p-6 rounded-xl border border-none mb-8 flex flex-col md:flex-row gap-6">
           {/* Formulario / Selector */}
-          <div className="flex-1 space-y-4">
+          <div className="flex-1 min-w-0 space-y-4">
             <h3 className="text-xl font-semibold border-b pb-2">Detalles de Facturación</h3>
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1">Cliente</label>
@@ -583,16 +583,23 @@ const Ventas = () => {
                   className="w-full border border-transparent rounded-lg p-2.5 outline-none"
                 />
                 <div className="flex flex-col gap-2">
-                  <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full border border-transparent rounded-lg p-2.5 outline-none glass-panel">
+                  <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)} className="w-full max-w-full border border-transparent rounded-lg p-2.5 outline-none glass-panel">
                     <option value="">-- Seleccionar ({productos.filter(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase()))).length} encontrados) --</option>
                     {productos
                       .filter(p => p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo && p.codigo.toLowerCase().includes(searchTerm.toLowerCase())))
-                      .map(p => <option key={p.id} value={p.id}>{p.nombre} (${formatCOP(p.valorVenta)} - Stock: {p.stock})</option>)
+                      .map(p => {
+                        const nombreCorto = p.nombre.length > 35 ? `${p.nombre.substring(0, 35)}...` : p.nombre;
+                        return (
+                          <option key={p.id} value={p.id}>
+                            {nombreCorto} (${formatCOP(p.valorVenta)} - Stock: {p.stock})
+                          </option>
+                        );
+                      })
                     }
                   </select>
                   <div className="flex gap-2">
-                    <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="flex-1 border border-transparent rounded-lg p-2.5 outline-none text-center" />
-                    <button type="button" onClick={agregarAlCarrito} className="bg-gray-800 text-white px-4 py-2.5 rounded-lg hover:bg-gray-900 flex items-center justify-center gap-1.5 font-semibold transition-colors shrink-0">
+                    <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className="w-20 border border-transparent rounded-lg p-2.5 outline-none text-center shrink-0" />
+                    <button type="button" onClick={agregarAlCarrito} className="flex-1 bg-gray-800 text-white px-4 py-2.5 rounded-lg hover:bg-gray-900 flex items-center justify-center gap-1.5 font-semibold transition-colors">
                       <Plus size={16}/>
                       Agregar
                     </button>
